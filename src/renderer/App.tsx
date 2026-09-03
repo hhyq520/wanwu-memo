@@ -3,7 +3,7 @@ import type { CatalogItem } from "@shared/types";
 import { ChatPane } from "./components/ChatPane";
 import { ItemDetail } from "./components/ItemDetail";
 import { SettingsPane } from "./components/SettingsPane";
-import { accession, locationLine, TYPE_LABEL } from "./labels";
+import { accession, cardLocationLine, TYPE_LABEL } from "./labels";
 
 type View = "library" | "chat" | "settings";
 
@@ -156,21 +156,34 @@ export function App() {
               {items.length === 0 && (
                 <div className="empty">这一格还是空的。去对话里说「记住……」，或先在设置里接上模型。</div>
               )}
-              {items.map((item) => (
-                <button key={item.id} className="card" onClick={() => setSelected(item)}>
-                  <div className="card-head">
-                    <span className={`stamp ${item.type}`}>{TYPE_LABEL[item.type]}</span>
-                    <span className="accession">{accession(item.id)}</span>
-                  </div>
-                  <h3 className="card-title">{item.title}</h3>
-                  <p className="card-summary">{item.summary || item.body.slice(0, 72) || item.howto}</p>
-                  {locationLine(item) && (
-                    <div className={`pathline ${item.pathMissing ? "missing" : ""}`}>
-                      {locationLine(item)}
+              {items.map((item) => {
+                const loc = cardLocationLine(item);
+                return (
+                  <div
+                    key={item.id}
+                    className="card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelected(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelected(item);
+                      }
+                    }}
+                  >
+                    <div className="card-head">
+                      <span className={`stamp ${item.type}`}>{TYPE_LABEL[item.type]}</span>
+                      <span className="accession">{accession(item.id)}</span>
                     </div>
-                  )}
-                </button>
-              ))}
+                    <h3 className="card-title">{item.title}</h3>
+                    <p className="card-summary">{item.summary || item.body.slice(0, 72) || item.howto}</p>
+                    {loc ? (
+                      <div className={`pathline ${item.pathMissing ? "missing" : ""}`}>{loc}</div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </section>
             {side}
           </div>

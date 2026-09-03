@@ -214,11 +214,15 @@ const PURPOSE_SYNONYMS: Record<string, string[]> = {
   generator: ["生成"]
 };
 
-function expandSearchTokens(query: string): string[] {
-  const parts = query
+function queryParts(query: string): string[] {
+  return query
     .split(/[\s,，、]+/)
     .map((part) => part.replace(/["']/g, "").trim())
     .filter(Boolean);
+}
+
+function expandSearchTokens(query: string): string[] {
+  const parts = queryParts(query);
   const out = new Set<string>(parts);
   const lower = query.toLowerCase();
   for (const [key, extras] of Object.entries(PURPOSE_SYNONYMS)) {
@@ -234,25 +238,96 @@ function ftsQuery(tokens: string[]): string {
   return tokens.map((part) => `"${part.replace(/["']/g, "")}"`).join(" OR ");
 }
 
-function searchItemsRaw(query: string): CatalogItem[] {
+function containsToken(haystack: string, token: string): boolean {
+  return haystack.toLowerCase().includes(token.toLowerCase());
+}
+
+function scoreTokenAgainstItem(item: CatalogItem, token: string): number {
+  if (!token) return 0;
+  const title = item.title;
+  if (title.toLowerCase() === token.toLowerCase()) return 100;
+  if (containsToken(title, token)) return 50;
+  if (item.keywords.some((word) => containsToken(word, token))) return 35;
+  if (item.tags.some((tag) => containsToken(tag, token))) return 30;
+  if (containsToken(item.summary, token) || containsToken(item.appName, token)) return 20;
+  if (containsToken(item.url, token) || containsToken(item.path, token)) return 12;
+  if (containsToken(item.body, token) || containsToken(item.howto, token)) return 8;
+  return 0;
+}
+
+function isOriginalToken(token: string, original: Set<string>): boolean {
+  return original.has(token.toLowerCase());
+}
+
+function scoreItem(item: CatalogItem, query: string, tokens: string[], original: Set<string>): number {
+  let originalScore = 0;
+  let synonymScore = 0;
+  for (const token of tokens) {
+    const points = scoreTokenAgainstItem(item, token);
+    if (isOriginalToken(token, original)) originalScore += points;
+    else synonymScore += points * 0.55;
+  }
+  let score = Math.max(originalScore, synonymScore);
+  const q = query.toLowerCase();
+  if (q && item.title.toLowerCase() === q) score += 80;
+  else if (q.length >= 2 && item.title.toLowerCase().includes(q)) score += 40;
+  const origTokens = [...original];
+  if (origTokens.length > 1 && origTokens.every((token) => containsToken(item.title, token))) {
+    score += 25;
+  }
+  return score;
+}
+
+function ftsBonus(ftsRank: number | undefined): number {
+  if (ftsRank == null || Number.isNaN(ftsRank)) return 0;
+  return Math.min(12, Math.max(0, -ftsRank) * 2);
+}
+
+interface RankedRow extends ItemRow {
+  fts_rank?: number;
+}
+
+interface ScoredHit {
+  item: CatalogItem;
+  score: number;
+  ftsRank?: number;
+}
+
+function searchItemsRaw(query: string): ScoredHit[] {
   const q = query.trim();
   if (!q) return [];
   const db = getDb();
-  const seen = new Map<string, CatalogItem>();
-  const match = ftsQuery(q.split(/[\s,，、]+/).filter(Boolean));
+  const seen = new Map<string, ScoredHit>();
+  const match = ftsQuery(queryParts(q));
   if (match) {
     try {
       const rows = db
         .prepare(
-          `SELECT items.* FROM items
+          `SELECT items.*, bm25(items_fts) AS fts_rank FROM items
            JOIN items_fts ON items.rowid = items_fts.rowid
-           WHERE items_fts MATCH ?
-           ORDER BY rank`
+           WHERE items_fts MATCH ?`
         )
-        .all(match) as ItemRow[];
-      for (const row of rows) seen.set(row.id, rowToItem(row));
+        .all(match) as RankedRow[];
+      for (const row of rows) {
+        const item = rowToItem(row);
+        seen.set(item.id, { item, score: 0, ftsRank: row.fts_rank });
+      }
     } catch {
-      // FTS syntax can fail on odd punctuation; fall through to LIKE.
+      try {
+        const rows = db
+          .prepare(
+            `SELECT items.* FROM items
+             JOIN items_fts ON items.rowid = items_fts.rowid
+             WHERE items_fts MATCH ?`
+          )
+          .all(match) as ItemRow[];
+        for (const row of rows) {
+          const item = rowToItem(row);
+          seen.set(item.id, { item, score: 0 });
+        }
+      } catch {
+        // FTS syntax can fail on odd punctuation; fall through to LIKE.
+      }
     }
   }
 
@@ -261,28 +336,59 @@ function searchItemsRaw(query: string): CatalogItem[] {
     .prepare(
       `SELECT * FROM items WHERE
         title LIKE ? OR summary LIKE ? OR howto LIKE ? OR body LIKE ? OR tags LIKE ?
-        OR keywords LIKE ? OR app_name LIKE ? OR path LIKE ? OR url LIKE ?
-      ORDER BY updated_at DESC`
+        OR keywords LIKE ? OR app_name LIKE ? OR path LIKE ? OR url LIKE ?`
     )
     .all(like, like, like, like, like, like, like, like, like) as ItemRow[];
   for (const row of likeRows) {
-    if (!seen.has(row.id)) seen.set(row.id, rowToItem(row));
+    if (!seen.has(row.id)) {
+      const item = rowToItem(row);
+      seen.set(item.id, { item, score: 0 });
+    }
   }
   return [...seen.values()];
+}
+
+function keepBetter(seen: Map<string, ScoredHit>, hit: ScoredHit): void {
+  const prev = seen.get(hit.item.id);
+  if (!prev || hit.score > prev.score || (hit.score === prev.score && (hit.ftsRank ?? 0) < (prev.ftsRank ?? 0))) {
+    seen.set(hit.item.id, hit);
+  }
 }
 
 export function searchItems(query: string): CatalogItem[] {
   const q = query.trim();
   if (!q) return [];
-  const seen = new Map<string, CatalogItem>();
-  for (const item of searchItemsRaw(q)) seen.set(item.id, item);
-  for (const token of expandSearchTokens(q)) {
-    if (token === q) continue;
-    for (const item of searchItemsRaw(token)) {
-      if (!seen.has(item.id)) seen.set(item.id, item);
+  const original = new Set(queryParts(q).map((part) => part.toLowerCase()));
+  const tokens = expandSearchTokens(q);
+  const seen = new Map<string, ScoredHit>();
+
+  const scoreHits = (needle: string): void => {
+    for (const hit of searchItemsRaw(needle)) {
+      const score = scoreItem(hit.item, q, tokens, original) + ftsBonus(hit.ftsRank);
+      keepBetter(seen, { item: hit.item, score, ftsRank: hit.ftsRank });
     }
+  };
+
+  scoreHits(q);
+  for (const token of tokens) {
+    if (token === q) continue;
+    scoreHits(token);
   }
-  return [...seen.values()];
+
+  return [...seen.values()]
+    .sort((a, b) => b.score - a.score || b.item.updatedAt - a.item.updatedAt)
+    .map((hit) => hit.item);
+}
+
+export function rankItemsByQuery(items: CatalogItem[], query: string): CatalogItem[] {
+  const q = query.trim();
+  if (!q || items.length <= 1) return items;
+  const original = new Set(queryParts(q).map((part) => part.toLowerCase()));
+  const tokens = expandSearchTokens(q);
+  return [...items].sort((a, b) => {
+    const delta = scoreItem(b, q, tokens, original) - scoreItem(a, q, tokens, original);
+    return delta || b.updatedAt - a.updatedAt;
+  });
 }
 
 export function replaceAllItems(items: CatalogItem[], mode: "merge" | "overwrite"): {

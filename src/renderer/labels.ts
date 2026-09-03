@@ -22,3 +22,17 @@ export function locationLine(item: {
   if (item.appName) return item.appName;
   return "";
 }
+
+export function cardLocationLine(item: {
+  path?: string;
+  url?: string;
+  appName?: string;
+  pathMissing?: boolean;
+  summary?: string;
+}): string {
+  const loc = locationLine(item);
+  if (!loc) return "";
+  const summary = item.summary ?? "";
+  if (summary === loc || (summary && summary.includes(loc))) return "";
+  return loc;
+}

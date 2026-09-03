@@ -11,7 +11,13 @@ export async function runCursorAgent(options: {
   onStep?: (step: ChatStep) => void;
 }): Promise<{ text: string; drafts: ItemDraft[]; matches: ToolRuntime["matches"]; steps: ChatStep[] }> {
   const { Agent, CursorAgentError } = await import("@cursor/sdk");
-  const runtime: ToolRuntime = { drafts: [], matches: [], steps: [], onStep: options.onStep };
+  const runtime: ToolRuntime = {
+    drafts: [],
+    matches: [],
+    steps: [],
+    onStep: options.onStep,
+    userText: options.userText
+  };
   runtime.onStep?.({ title: "正在调用模型" });
   runtime.steps.push({ title: "正在调用模型" });
   const prior = options.history

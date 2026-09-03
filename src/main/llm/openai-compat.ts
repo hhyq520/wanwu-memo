@@ -29,7 +29,13 @@ export async function runOpenAICompat(options: {
     { role: "user", content: options.userText }
   ];
 
-  const runtime: ToolRuntime = { drafts: [], matches: [], steps: [], onStep: options.onStep };
+  const runtime: ToolRuntime = {
+    drafts: [],
+    matches: [],
+    steps: [],
+    onStep: options.onStep,
+    userText: options.userText
+  };
   const tools = TOOL_DEFINITIONS as OpenAI.Chat.ChatCompletionTool[];
   runtime.onStep?.({ title: "正在调用模型" });
   runtime.steps.push({ title: "正在调用模型" });

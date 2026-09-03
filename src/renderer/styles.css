@@ -31,6 +31,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -54,6 +55,8 @@ button {
   display: grid;
   grid-template-columns: 232px 1fr;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .drawer {
@@ -146,6 +149,9 @@ button {
   display: grid;
   grid-template-rows: auto 1fr;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .topbar {
@@ -236,6 +242,9 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
   align-content: start;
+  align-items: start;
+  min-height: 0;
+  min-width: 0;
 }
 
 .card {
@@ -249,17 +258,27 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 148px;
+  min-width: 0;
+  height: auto;
+  overflow: visible;
+  cursor: pointer;
 }
 
 .card:hover {
   transform: translateY(-1px);
 }
 
+.card:focus-visible {
+  outline: 2px solid var(--cabinet);
+  outline-offset: 2px;
+}
+
 .card-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex-shrink: 0;
+  gap: 8px;
 }
 
 .accession {
@@ -272,6 +291,13 @@ button {
   font-size: 17px;
   font-weight: 600;
   margin: 0;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .card-summary {
@@ -279,13 +305,26 @@ button {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: calc(1.5em * 4);
 }
 
 .pathline {
   font-family: var(--mono);
   font-size: 11px;
+  line-height: 1.4;
   color: var(--path);
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .missing {
@@ -442,6 +481,19 @@ button:disabled {
   gap: 8px;
   align-items: center;
   border-style: solid;
+  min-width: 0;
+}
+
+.match-card-body {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.match-card .actions {
+  flex-shrink: 0;
 }
 
 .toast {

@@ -1,4 +1,5 @@
 import type { ChatStep, ChatTurnResult } from "@shared/types";
+import { rankItemsByQuery } from "../catalog";
 import { addMessage, getOrCreateConversation, listMessages } from "../conversations";
 import { getApiKey, getSettings } from "../settings";
 import { runCursorAgent } from "./cursor";
@@ -55,7 +56,7 @@ export async function handleChat(
 
   const assistantMessage = addMessage(convo.id, "assistant", result.text, {
     drafts: result.drafts,
-    matches: result.matches,
+    matches: rankItemsByQuery(result.matches ?? [], userText),
     steps: result.steps
   });
 

@@ -1,5 +1,5 @@
 import type { ChatStep, ItemDraft, ItemType, SourceKind } from "@shared/types";
-import { searchItems, upsertItem } from "./catalog";
+import { rankItemsByQuery, searchItems, upsertItem } from "./catalog";
 import { inspectGit, inspectPath, inspectUrl, resolveApp } from "./inspect";
 
 export const TOOL_DEFINITIONS = [
@@ -60,7 +60,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "search_items",
       description:
-        "在已保存的记忆里模糊查找。用户在找东西时必须先调用。用途/需求类问题要连搜 2 到 4 次：原句、中英同义词、常见产品名或域名。只根据返回结果列举，不要编造未搜到的条目。",
+        "在已保存的记忆里模糊查找，结果已按匹配度从高到低排列。用户在找东西时必须先调用。用途/需求类问题要连搜 2 到 4 次：原句、中英同义词、常见产品名或域名。只根据返回结果列举，顺序与编号保持一致，不要编造未搜到的条目。",
       parameters: {
         type: "object",
         properties: {
@@ -138,6 +138,7 @@ export interface ToolRuntime {
   matches: ReturnType<typeof searchItems>;
   steps: ChatStep[];
   onStep?: (step: ChatStep) => void;
+  userText?: string;
 }
 
 function firstText(...values: unknown[]): string {
@@ -273,10 +274,14 @@ async function runTool(
       return JSON.stringify(await resolveApp(needle));
     }
     case "search_items": {
-      const matches = searchItems(String(args.query || ""));
-      runtime.matches = mergeUnique(runtime.matches, matches);
+      const query = String(args.query || "");
+      const matches = searchItems(query);
+      runtime.matches = rankItemsByQuery(
+        mergeUnique(runtime.matches, matches),
+        runtime.userText || query
+      );
       return JSON.stringify(
-        matches.map((item, index) => ({
+        rankItemsByQuery(matches, runtime.userText || query).map((item, index) => ({
           n: index + 1,
           id: item.id,
           title: item.title,

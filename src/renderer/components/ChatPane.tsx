@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CatalogItem, ChatMessage, ChatStep, Conversation } from "@shared/types";
 import { ConfirmCard } from "./ConfirmCard";
-import { accession, locationLine, TYPE_LABEL } from "../labels";
+import { accession, cardLocationLine, TYPE_LABEL } from "../labels";
 
 interface Props {
   onSaved: (item: CatalogItem) => void;
@@ -87,48 +87,51 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
                 onToast={onToast}
               />
             ))}
-            {msg.matches?.map((item) => (
-              <div className="match-card" key={`${msg.id}-${item.id}`}>
-                <div>
-                  <div className="card-head">
-                    <span className={`stamp ${item.type}`}>{TYPE_LABEL[item.type]}</span>
-                    <span className="accession">{accession(item.id)}</span>
+            {msg.matches?.map((item) => {
+              const loc = cardLocationLine(item);
+              return (
+                <div className="match-card" key={`${msg.id}-${item.id}`}>
+                  <div className="match-card-body">
+                    <div className="card-head">
+                      <span className={`stamp ${item.type}`}>{TYPE_LABEL[item.type]}</span>
+                      <span className="accession">{accession(item.id)}</span>
+                    </div>
+                    <strong className="card-title">{item.title}</strong>
+                    <div className="card-summary">{item.summary || item.body.slice(0, 80)}</div>
+                    {loc ? <div className="pathline">{loc}</div> : null}
                   </div>
-                  <strong>{item.title}</strong>
-                  <div className="card-summary">{item.summary || item.body.slice(0, 80)}</div>
-                  <div className="pathline">{locationLine(item)}</div>
+                  <div className="actions">
+                    <button className="ghost" onClick={() => onOpenItem(item)}>
+                      详情
+                    </button>
+                    {item.type === "app" && (
+                      <button
+                        className="solid"
+                        onClick={async () => onToast((await window.api.launch.run(item.id, "open_app")).message)}
+                      >
+                        打开
+                      </button>
+                    )}
+                    {item.type === "url" && item.url && (
+                      <button
+                        className="solid"
+                        onClick={async () => onToast((await window.api.launch.run(item.id, "open_url")).message)}
+                      >
+                        打开
+                      </button>
+                    )}
+                    {item.type === "note" && item.body && (
+                      <button
+                        className="solid"
+                        onClick={async () => onToast((await window.api.clipboard.write(item.body)).message)}
+                      >
+                        复制
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="actions">
-                  <button className="ghost" onClick={() => onOpenItem(item)}>
-                    详情
-                  </button>
-                  {item.type === "app" && (
-                    <button
-                      className="solid"
-                      onClick={async () => onToast((await window.api.launch.run(item.id, "open_app")).message)}
-                    >
-                      打开
-                    </button>
-                  )}
-                  {item.type === "url" && item.url && (
-                    <button
-                      className="solid"
-                      onClick={async () => onToast((await window.api.launch.run(item.id, "open_url")).message)}
-                    >
-                      打开
-                    </button>
-                  )}
-                  {item.type === "note" && item.body && (
-                    <button
-                      className="solid"
-                      onClick={async () => onToast((await window.api.clipboard.write(item.body)).message)}
-                    >
-                      复制
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ))}
         {busy && (
