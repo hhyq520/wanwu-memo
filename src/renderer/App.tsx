@@ -126,23 +126,27 @@ export function App() {
       </nav>
 
       <main className="well">
-        <header className="topbar">
-          <input
-            className="search"
-            placeholder="在柜里搜标题、用途、软件名、原文……"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void reload();
-            }}
-          />
-          <button className="ghost" onClick={() => void reload()}>
-            检索
-          </button>
-          <button className="solid" onClick={() => setView("chat")}>
-            记一笔
-          </button>
-        </header>
+        {view === "library" ? (
+          <header className="topbar">
+            <input
+              className="search"
+              placeholder="在柜里搜标题、用途、软件名、原文……"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void reload();
+              }}
+            />
+            <button className="ghost" onClick={() => void reload()}>
+              检索
+            </button>
+            <button className="solid" onClick={() => setView("chat")}>
+              记一笔
+            </button>
+          </header>
+        ) : (
+          <div className="drag-strip" />
+        )}
 
         {view === "library" ? (
           <div className={`main-split ${side ? "" : "no-detail"}`}>

@@ -144,6 +144,12 @@ button {
   -webkit-app-region: no-drag;
 }
 
+.drag-strip {
+  height: 36px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+
 .search {
   flex: 1;
   border: 1px solid var(--rule);
@@ -365,6 +371,25 @@ button {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+.think-log {
+  margin: 0 0 8px;
+  padding: 8px 10px 8px 26px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.think-log.is-live {
+  background: #e8eef3;
+}
+
+.think-log em {
+  display: block;
+  font-style: normal;
+  color: var(--path);
 }
 
 .composer textarea {

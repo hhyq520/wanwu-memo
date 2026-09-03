@@ -1,28 +1,38 @@
-import type { ChatTurnResult } from "@shared/types";
+import type { ChatStep, ChatTurnResult } from "@shared/types";
 import { addMessage, getOrCreateConversation, listMessages } from "../conversations";
 import { getApiKey, getSettings } from "../settings";
 import { runCursorAgent } from "./cursor";
 import { runLocalFallback } from "./local-fallback";
 import { runOpenAICompat } from "./openai-compat";
 
-export async function handleChat(conversationId: string | undefined, userText: string): Promise<ChatTurnResult> {
+export async function handleChat(
+  conversationId: string | undefined,
+  userText: string,
+  onStep?: (step: ChatStep) => void
+): Promise<ChatTurnResult> {
   const convo = getOrCreateConversation(conversationId);
   const history = listMessages(convo.id);
   const userMessage = addMessage(convo.id, "user", userText);
   const settings = getSettings();
   const apiKey = getApiKey();
 
-  let result: { text: string; drafts: ChatTurnResult["assistantMessage"]["drafts"]; matches: ChatTurnResult["assistantMessage"]["matches"] };
+  let result: {
+    text: string;
+    drafts: ChatTurnResult["assistantMessage"]["drafts"];
+    matches: ChatTurnResult["assistantMessage"]["matches"];
+    steps: ChatStep[];
+  };
 
   try {
     if (!apiKey) {
-      result = runLocalFallback(userText);
+      result = await runLocalFallback(userText, onStep);
     } else if (settings.provider === "cursor") {
       result = await runCursorAgent({
         model: settings.model,
         apiKey,
         history,
-        userText
+        userText,
+        onStep
       });
     } else {
       result = await runOpenAICompat({
@@ -30,20 +40,23 @@ export async function handleChat(conversationId: string | undefined, userText: s
         model: settings.model,
         apiKey,
         history,
-        userText
+        userText,
+        onStep
       });
     }
   } catch (error) {
     result = {
       text: error instanceof Error ? `调用模型失败：${error.message}` : "调用模型失败",
       drafts: [],
-      matches: []
+      matches: [],
+      steps: []
     };
   }
 
   const assistantMessage = addMessage(convo.id, "assistant", result.text, {
     drafts: result.drafts,
-    matches: result.matches
+    matches: result.matches,
+    steps: result.steps
   });
 
   return { conversationId: convo.id, userMessage, assistantMessage };

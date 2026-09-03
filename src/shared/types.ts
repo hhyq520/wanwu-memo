@@ -55,6 +55,11 @@ export interface Conversation {
   updatedAt: number;
 }
 
+export interface ChatStep {
+  title: string;
+  detail?: string;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -62,6 +67,7 @@ export interface ChatMessage {
   content: string;
   drafts?: ItemDraft[];
   matches?: CatalogItem[];
+  steps?: ChatStep[];
   createdAt: number;
 }
 
@@ -147,6 +153,7 @@ export interface ResolveAppResult {
   found: boolean;
   path?: string;
   candidates: string[];
+  error?: string;
 }
 
 export const PROVIDER_DEFAULTS: Record<

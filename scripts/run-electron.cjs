@@ -5,7 +5,14 @@ const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
 const mode = process.argv[2] || "dev";
-const electronVite = require.resolve("electron-vite/bin/electron-vite.js");
+const electronVite = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "electron-vite",
+  "bin",
+  "electron-vite.js"
+);
 const electronBin = require("electron");
 
 const child =

@@ -1,4 +1,4 @@
-import type { ChatMessage, ItemDraft } from "@shared/types";
+import type { ChatMessage, ChatStep, ItemDraft } from "@shared/types";
 import { cursorCustomTools, type ToolRuntime } from "../tools";
 import { sandboxCwd } from "../settings";
 import { SYSTEM_PROMPT } from "./system-prompt";
@@ -8,9 +8,12 @@ export async function runCursorAgent(options: {
   apiKey: string;
   history: ChatMessage[];
   userText: string;
-}): Promise<{ text: string; drafts: ItemDraft[]; matches: ToolRuntime["matches"] }> {
+  onStep?: (step: ChatStep) => void;
+}): Promise<{ text: string; drafts: ItemDraft[]; matches: ToolRuntime["matches"]; steps: ChatStep[] }> {
   const { Agent, CursorAgentError } = await import("@cursor/sdk");
-  const runtime: ToolRuntime = { drafts: [], matches: [] };
+  const runtime: ToolRuntime = { drafts: [], matches: [], steps: [], onStep: options.onStep };
+  runtime.onStep?.({ title: "正在调用模型" });
+  runtime.steps.push({ title: "正在调用模型" });
   const prior = options.history
     .slice(-8)
     .map((msg) => `${msg.role === "user" ? "用户" : "助手"}: ${msg.content}`)
@@ -34,13 +37,14 @@ export async function runCursorAgent(options: {
         return {
           text: "Cursor 这一轮执行失败。可换 DeepSeek / 智谱再试。",
           drafts: runtime.drafts,
-          matches: runtime.matches
+          matches: runtime.matches,
+          steps: runtime.steps
         };
       }
       const text =
         (result as { result?: string }).result?.trim() ||
         "已处理。看上面的确认卡或列表。";
-      return { text, drafts: runtime.drafts, matches: runtime.matches };
+      return { text, drafts: runtime.drafts, matches: runtime.matches, steps: runtime.steps };
     } finally {
       await agent[Symbol.asyncDispose]();
     }
@@ -49,7 +53,8 @@ export async function runCursorAgent(options: {
       return {
         text: `Cursor 没能启动：${error.message}`,
         drafts: [],
-        matches: []
+        matches: [],
+        steps: runtime.steps
       };
     }
     throw error;

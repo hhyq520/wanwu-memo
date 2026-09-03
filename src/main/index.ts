@@ -10,7 +10,26 @@ import { getSettings, setSettings } from "./settings";
 import { exportCatalog, importCatalog } from "./transfer";
 import type { AppSettingsInput, ItemDraft, LaunchAction } from "@shared/types";
 
-function createWindow(): void {
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
+let mainWindow: BrowserWindow | null = null;
+
+function focusMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createWindow(): BrowserWindow {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    focusMainWindow();
+    return mainWindow;
+  }
+
   const win = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -32,14 +51,34 @@ function createWindow(): void {
   } else {
     win.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
+
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+
+  mainWindow = win;
+  return win;
 }
+
+app.on("open-file", (event) => {
+  event.preventDefault();
+});
+
+app.on("open-url", (event) => {
+  event.preventDefault();
+});
+
+app.on("second-instance", () => {
+  focusMainWindow();
+});
 
 app.whenReady().then(() => {
   getDb();
   registerIpc();
   createWindow();
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    else focusMainWindow();
   });
 });
 
@@ -59,8 +98,10 @@ function registerIpc(): void {
   ipcMain.handle("catalog:delete", (_e, id: string) => deleteItem(id));
   ipcMain.handle("catalog:categories", () => listCategories());
 
-  ipcMain.handle("chat:send", (_e, conversationId: string | undefined, text: string) =>
-    handleChat(conversationId, text)
+  ipcMain.handle("chat:send", (e, conversationId: string | undefined, text: string) =>
+    handleChat(conversationId, text, (step) => {
+      e.sender.send("chat:step", step);
+    })
   );
   ipcMain.handle("chat:list", () => listConversations());
   ipcMain.handle("chat:messages", (_e, id?: string) => {

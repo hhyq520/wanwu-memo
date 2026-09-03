@@ -65,7 +65,11 @@ export function ConfirmCard({ draft, onSaved, onToast }: Props) {
       {(local.type === "project" || local.type === "app") && (
         <label className="field">
           <span>路径</span>
-          <input value={local.path || ""} onChange={(e) => setLocal({ ...local, path: e.target.value })} />
+          <input
+            value={local.path || ""}
+            placeholder={local.type === "app" ? "/Applications/VidBee.app" : ""}
+            onChange={(e) => setLocal({ ...local, path: e.target.value })}
+          />
         </label>
       )}
       {(local.type === "url" || local.url) && (

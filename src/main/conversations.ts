@@ -63,7 +63,7 @@ export function listMessages(conversationId: string): ChatMessage[] {
     .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC")
     .all(conversationId) as MessageRow[];
   return rows.map((row) => {
-    let extra: { drafts?: ItemDraft[]; matches?: CatalogItem[] } = {};
+    let extra: { drafts?: ItemDraft[]; matches?: CatalogItem[]; steps?: ChatMessage["steps"] } = {};
     try {
       extra = JSON.parse(row.extra);
     } catch {
@@ -76,6 +76,7 @@ export function listMessages(conversationId: string): ChatMessage[] {
       content: row.content,
       drafts: extra.drafts,
       matches: extra.matches,
+      steps: extra.steps,
       createdAt: row.created_at
     };
   });
@@ -85,7 +86,7 @@ export function addMessage(
   conversationId: string,
   role: "user" | "assistant",
   content: string,
-  extra?: { drafts?: ItemDraft[]; matches?: CatalogItem[] }
+  extra?: { drafts?: ItemDraft[]; matches?: CatalogItem[]; steps?: ChatMessage["steps"] }
 ): ChatMessage {
   const db = getDb();
   const message: ChatMessage = {
@@ -95,6 +96,7 @@ export function addMessage(
     content,
     drafts: extra?.drafts,
     matches: extra?.matches,
+    steps: extra?.steps,
     createdAt: Date.now()
   };
   db.prepare(
@@ -104,7 +106,11 @@ export function addMessage(
     conversationId,
     role,
     content,
-    JSON.stringify({ drafts: extra?.drafts ?? [], matches: extra?.matches ?? [] }),
+    JSON.stringify({
+      drafts: extra?.drafts ?? [],
+      matches: extra?.matches ?? [],
+      steps: extra?.steps ?? []
+    }),
     message.createdAt
   );
   if (role === "user") {

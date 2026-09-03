@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CatalogItem, ChatMessage, Conversation } from "@shared/types";
+import type { CatalogItem, ChatMessage, ChatStep, Conversation } from "@shared/types";
 import { ConfirmCard } from "./ConfirmCard";
 import { accession, locationLine, TYPE_LABEL } from "../labels";
 
@@ -14,6 +14,7 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [liveSteps, setLiveSteps] = useState<ChatStep[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,14 +25,21 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
   }, []);
 
   useEffect(() => {
+    return window.api.chat.onStep((step) => {
+      setLiveSteps((prev) => [...prev, step]);
+    });
+  }, []);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, busy]);
+  }, [messages, busy, liveSteps]);
 
   async function send() {
     const content = text.trim();
     if (!content || busy) return;
     setText("");
     setBusy(true);
+    setLiveSteps([]);
     try {
       const result = await window.api.chat.send(conversation?.id, content);
       setConversation((prev) =>
@@ -42,6 +50,7 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
       onToast(error instanceof Error ? error.message : "发送失败");
     } finally {
       setBusy(false);
+      setLiveSteps([]);
     }
   }
 
@@ -49,6 +58,7 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
     const res = await window.api.chat.new();
     setConversation(res.conversation);
     setMessages([]);
+    setLiveSteps([]);
   }
 
   return (
@@ -67,6 +77,7 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
         )}
         {messages.map((msg) => (
           <div key={msg.id}>
+            {msg.steps && msg.steps.length > 0 && <StepList steps={msg.steps} />}
             <div className={`bubble ${msg.role}`}>{msg.content}</div>
             {msg.drafts?.map((draft, i) => (
               <ConfirmCard
@@ -120,7 +131,12 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
             ))}
           </div>
         ))}
-        {busy && <div className="bubble assistant">在看、在想……</div>}
+        {busy && (
+          <StepList
+            steps={liveSteps.length ? liveSteps : [{ title: "正在调用模型" }]}
+            live
+          />
+        )}
         <div ref={endRef} />
       </div>
       <div className="composer">
@@ -140,5 +156,18 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
         </button>
       </div>
     </section>
+  );
+}
+
+function StepList({ steps, live }: { steps: ChatStep[]; live?: boolean }) {
+  return (
+    <ol className={`think-log ${live ? "is-live" : ""}`}>
+      {steps.map((step, i) => (
+        <li key={`${step.title}-${i}`}>
+          <span>{step.title}</span>
+          {step.detail && <em>{step.detail}</em>}
+        </li>
+      ))}
+    </ol>
   );
 }

@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { ChatMessage, ItemDraft } from "@shared/types";
+import type { ChatMessage, ChatStep, ItemDraft } from "@shared/types";
 import { PROVIDER_DEFAULTS, type ProviderId } from "@shared/types";
 import { executeTool, TOOL_DEFINITIONS, type ToolRuntime } from "../tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
@@ -12,7 +12,8 @@ export async function runOpenAICompat(options: {
   apiKey: string;
   history: ChatMessage[];
   userText: string;
-}): Promise<{ text: string; drafts: ItemDraft[]; matches: ToolRuntime["matches"] }> {
+  onStep?: (step: ChatStep) => void;
+}): Promise<{ text: string; drafts: ItemDraft[]; matches: ToolRuntime["matches"]; steps: ChatStep[] }> {
   const spec = PROVIDER_DEFAULTS[options.provider];
   const client = new OpenAI({
     apiKey: options.apiKey,
@@ -28,8 +29,10 @@ export async function runOpenAICompat(options: {
     { role: "user", content: options.userText }
   ];
 
-  const runtime: ToolRuntime = { drafts: [], matches: [] };
+  const runtime: ToolRuntime = { drafts: [], matches: [], steps: [], onStep: options.onStep };
   const tools = TOOL_DEFINITIONS as OpenAI.Chat.ChatCompletionTool[];
+  runtime.onStep?.({ title: "正在调用模型" });
+  runtime.steps.push({ title: "正在调用模型" });
 
   for (let step = 0; step < 8; step += 1) {
     const completion = await client.chat.completions.create({
@@ -48,7 +51,8 @@ export async function runOpenAICompat(options: {
       return {
         text: message.content?.trim() || "好。",
         drafts: runtime.drafts,
-        matches: runtime.matches
+        matches: runtime.matches,
+        steps: runtime.steps
       };
     }
 
@@ -72,6 +76,7 @@ export async function runOpenAICompat(options: {
   return {
     text: "这一轮分析被打断了。再说一次你要记什么，或要找什么。",
     drafts: runtime.drafts,
-    matches: runtime.matches
+    matches: runtime.matches,
+    steps: runtime.steps
   };
 }

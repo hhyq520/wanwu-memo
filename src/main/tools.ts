@@ -1,7 +1,6 @@
-import type { ItemDraft, ItemType, LaunchAction, SourceKind } from "@shared/types";
-import { getItem, searchItems, upsertItem } from "./catalog";
+import type { ChatStep, ItemDraft, ItemType, SourceKind } from "@shared/types";
+import { searchItems, upsertItem } from "./catalog";
 import { inspectGit, inspectPath, inspectUrl, resolveApp } from "./inspect";
-import { launchItem } from "./launcher";
 
 export const TOOL_DEFINITIONS = [
   {
@@ -44,11 +43,15 @@ export const TOOL_DEFINITIONS = [
     type: "function" as const,
     function: {
       name: "resolve_app",
-      description: "按软件名在本机查找已安装应用路径。记住本机软件时尽量调用。找不到也可以只凭名字入库。",
+      description:
+        "按软件名在本机查找已安装应用路径。记住本机软件时尽量调用。参数填软件名，如 VidBee。name / query / appName 任一即可。只有真正扫过本机仍找不到，才可以只凭名字入库。",
       parameters: {
         type: "object",
-        properties: { name: { type: "string" } },
-        required: ["name"]
+        properties: {
+          name: { type: "string", description: "软件名，如 VidBee" },
+          query: { type: "string", description: "软件名别名，与 name 相同" },
+          appName: { type: "string", description: "软件名别名，与 name 相同" }
+        }
       }
     }
   },
@@ -121,31 +124,96 @@ export const TOOL_DEFINITIONS = [
         required: ["title", "type"]
       }
     }
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "open_item",
-      description:
-        "打开或运行已保存条目。必须先列举匹配项并得到用户同意（打开/要/1）后才能调用。",
-      parameters: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          action: {
-            type: "string",
-            enum: ["open_app", "open_folder", "open_cursor", "open_url", "run_command"]
-          }
-        },
-        required: ["id", "action"]
-      }
-    }
   }
 ];
 
 export interface ToolRuntime {
   drafts: ItemDraft[];
   matches: ReturnType<typeof searchItems>;
+  steps: ChatStep[];
+  onStep?: (step: ChatStep) => void;
+}
+
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function parseObject(text: string): Record<string, unknown> | unknown[] | null {
+  try {
+    const value = JSON.parse(text) as unknown;
+    if (value && typeof value === "object") return value as Record<string, unknown> | unknown[];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function describeTool(name: string, args: Record<string, unknown>, output: string): ChatStep {
+  const data = parseObject(output);
+  const obj = data && !Array.isArray(data) ? data : null;
+  switch (name) {
+    case "resolve_app": {
+      const needle = firstText(args.name, args.query, args.appName, obj?.name);
+      if (obj?.error === "missing name") {
+        return { title: "按软件名查找", detail: "参数空了，还没扫本机" };
+      }
+      if (obj?.found && obj.path) {
+        return { title: `按软件名查找 ${needle}`, detail: `找到 ${String(obj.path)}` };
+      }
+      return { title: `按软件名查找 ${needle || "（未给名）"}`, detail: "本机没搜到匹配路径" };
+    }
+    case "inspect_path": {
+      const p = firstText(args.path, obj?.path);
+      return {
+        title: `查看本地路径 ${p}`,
+        detail: obj?.exists ? "路径存在" : "路径不存在"
+      };
+    }
+    case "inspect_git": {
+      const url = firstText(args.url, obj?.url);
+      return {
+        title: `查看仓库 ${url}`,
+        detail: obj?.ok ? String(obj.name || obj.description || "已读到简介") : String(obj?.error || "没读到")
+      };
+    }
+    case "inspect_url": {
+      const url = firstText(args.url, obj?.url);
+      return {
+        title: `抓取网页 ${url}`,
+        detail: obj?.ok ? String(obj.title || "已读到标题") : String(obj?.error || "没读到")
+      };
+    }
+    case "search_items": {
+      const q = firstText(args.query);
+      const count = Array.isArray(data) ? data.length : 0;
+      return { title: `在记忆里搜「${q}」`, detail: count ? `找到 ${count} 条` : "没有匹配" };
+    }
+    case "propose_item": {
+      const dataObj = obj;
+      const pathHint = firstText(
+        args.path,
+        dataObj && "draft" in dataObj
+          ? (dataObj.draft as { path?: string } | undefined)?.path
+          : undefined
+      );
+      return {
+        title: `生成确认卡「${firstText(args.title) || "未命名"}」`,
+        detail: pathHint ? `路径 ${pathHint}` : undefined
+      };
+    }
+    case "upsert_item":
+      return { title: `写入「${firstText(args.title) || "未命名"}」` };
+    default:
+      return { title: `调用 ${name}` };
+  }
+}
+
+function pushStep(runtime: ToolRuntime, step: ChatStep): void {
+  runtime.steps.push(step);
+  runtime.onStep?.(step);
 }
 
 function asDraft(args: Record<string, unknown>): ItemDraft {
@@ -174,6 +242,16 @@ export async function executeTool(
   args: Record<string, unknown>,
   runtime: ToolRuntime
 ): Promise<string> {
+  const output = await runTool(name, args, runtime);
+  pushStep(runtime, describeTool(name, args, output));
+  return output;
+}
+
+async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+  runtime: ToolRuntime
+): Promise<string> {
   switch (name) {
     case "inspect_path":
       return JSON.stringify(inspectPath(String(args.path || "")));
@@ -181,8 +259,13 @@ export async function executeTool(
       return JSON.stringify(await inspectGit(String(args.url || "")));
     case "inspect_url":
       return JSON.stringify(await inspectUrl(String(args.url || "")));
-    case "resolve_app":
-      return JSON.stringify(await resolveApp(String(args.name || "")));
+    case "resolve_app": {
+      const needle = firstText(args.name, args.query, args.appName);
+      if (!needle) {
+        return JSON.stringify({ name: "", found: false, candidates: [], error: "missing name" });
+      }
+      return JSON.stringify(await resolveApp(needle));
+    }
     case "search_items": {
       const matches = searchItems(String(args.query || ""));
       runtime.matches = mergeUnique(runtime.matches, matches);
@@ -203,19 +286,19 @@ export async function executeTool(
     }
     case "propose_item": {
       const draft = asDraft(args);
+      if (draft.type === "app" && !draft.path) {
+        const resolved = await resolveApp(draft.appName || draft.title);
+        if (resolved.found && resolved.path) {
+          draft.path = resolved.path;
+          draft.appName = draft.appName || resolved.name;
+        }
+      }
       runtime.drafts.push(draft);
       return JSON.stringify({ ok: true, draft, note: "已生成确认卡，等用户确定后再 upsert" });
     }
     case "upsert_item": {
       const saved = upsertItem(asDraft(args));
       return JSON.stringify({ ok: true, item: saved });
-    }
-    case "open_item": {
-      const id = String(args.id || "");
-      const item = getItem(id);
-      if (!item) return JSON.stringify({ ok: false, message: "条目不存在" });
-      const result = await launchItem(id, args.action as LaunchAction);
-      return JSON.stringify(result);
     }
     default:
       return JSON.stringify({ error: `未知工具 ${name}` });

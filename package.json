@@ -17,7 +17,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
-    "package:mac": "electron-vite build && electron-builder --mac",
+    "package:mac": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
     "package:win": "electron-vite build && electron-builder --win",
     "postinstall": "electron-builder install-app-deps"
   },

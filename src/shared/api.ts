@@ -3,6 +3,7 @@ import type {
   AppSettingsInput,
   CatalogItem,
   ChatMessage,
+  ChatStep,
   ChatTurnResult,
   Conversation,
   ImportResult,
@@ -25,6 +26,7 @@ export interface DesktopApi {
     list: () => Promise<Conversation[]>;
     messages: (id?: string) => Promise<{ conversation: Conversation; messages: ChatMessage[] }>;
     new: () => Promise<{ conversation: Conversation; messages: ChatMessage[] }>;
+    onStep: (cb: (step: ChatStep) => void) => () => void;
   };
   launch: {
     run: (id: string, action: LaunchAction) => Promise<LaunchResult>;

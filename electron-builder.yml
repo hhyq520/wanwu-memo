@@ -10,9 +10,10 @@ asarUnpack:
   - node_modules/better-sqlite3/**/*
 mac:
   category: public.app-category.productivity
+  icon: build/icon.png
+  identity: null
   target:
     - dmg
-    - zip
   artifactName: ${productName}-${version}-${arch}.${ext}
 win:
   target:

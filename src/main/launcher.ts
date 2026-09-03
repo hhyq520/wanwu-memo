@@ -1,11 +1,11 @@
-import { exec, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { shell } from "electron";
 import type { CatalogItem, LaunchAction, LaunchResult } from "@shared/types";
 import { getItem } from "./catalog";
 import { expandUserPath } from "./paths";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 function fail(message: string): LaunchResult {
   return { ok: false, message };
@@ -15,17 +15,60 @@ function ok(message: string): LaunchResult {
   return { ok: true, message };
 }
 
+function normalizeLaunchTarget(target: string): string {
+  const trimmed = target.trim().replace(/^file:\/\//, "");
+  return expandUserPath(decodeURIComponent(trimmed));
+}
+
+function cleanLaunchEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.ELECTRON_NO_ASAR;
+  delete env.ELECTRON_RENDERER_URL;
+  return env;
+}
+
+async function macOpen(args: string[]): Promise<void> {
+  await execFileAsync("/usr/bin/open", args, { env: cleanLaunchEnv() });
+}
+
 async function openByNameMac(name: string): Promise<LaunchResult> {
   try {
-    await execAsync(`open -a ${JSON.stringify(name)}`);
+    await macOpen(["-a", name]);
     return ok(`已打开 ${name}`);
   } catch {
     return fail(`没找到软件「${name}」，请在条目里补路径`);
   }
 }
 
+async function openMacApp(appRef: string): Promise<LaunchResult> {
+  const target = normalizeLaunchTarget(appRef);
+  try {
+    await macOpen(["-a", target]);
+    return ok(`已打开 ${target}`);
+  } catch {
+    const base = target.replace(/\.app\/?$/i, "").split("/").pop() || target;
+    if (base !== target) return openByNameMac(base);
+    return fail(`打不开 ${target}`);
+  }
+}
+
+async function openMacFolder(target: string): Promise<LaunchResult> {
+  const expanded = normalizeLaunchTarget(target);
+  try {
+    await macOpen(["-a", "Finder", expanded]);
+    return ok(`已打开 ${expanded}`);
+  } catch {
+    return fail(`打不开 ${expanded}`);
+  }
+}
+
 async function openPath(target: string): Promise<LaunchResult> {
-  const expanded = expandUserPath(target);
+  const expanded = normalizeLaunchTarget(target);
+  if (process.platform === "darwin") {
+    if (expanded.toLowerCase().endsWith(".app")) return openMacApp(expanded);
+    return openMacFolder(expanded);
+  }
   const error = await shell.openPath(expanded);
   if (error) return fail(error);
   return ok(`已打开 ${expanded}`);
@@ -43,8 +86,13 @@ export async function launchResolved(
 ): Promise<LaunchResult> {
   switch (action) {
     case "open_app": {
+      if (item.path && process.platform === "darwin") return openMacApp(item.path);
       if (item.path) return openPath(item.path);
-      if (item.appName && process.platform === "darwin") return openByNameMac(item.appName);
+      if (item.appName && process.platform === "darwin") {
+        const asPath = normalizeLaunchTarget(item.appName);
+        if (asPath.toLowerCase().endsWith(".app")) return openMacApp(asPath);
+        return openByNameMac(item.appName);
+      }
       if (item.appName && process.platform === "win32") {
         try {
           spawn("cmd", ["/c", "start", "", item.appName], { detached: true, stdio: "ignore" });
@@ -63,24 +111,27 @@ export async function launchResolved(
     case "open_cursor": {
       const target = expandUserPath(item.path);
       if (!target) return fail("没有项目路径");
+      if (process.platform === "darwin") {
+        try {
+          await macOpen(["-a", "Cursor", target]);
+          return ok(`已用 Cursor 打开 ${target}`);
+        } catch {
+          return fail("打不开 Cursor，确认已安装并加入 PATH");
+        }
+      }
       try {
-        spawn("cursor", [target], { detached: true, stdio: "ignore" });
+        spawn("cursor", [target], { detached: true, stdio: "ignore", env: cleanLaunchEnv() });
         return ok(`已用 Cursor 打开 ${target}`);
       } catch {
-        if (process.platform === "darwin") {
-          try {
-            await execAsync(`open -a Cursor ${JSON.stringify(target)}`);
-            return ok(`已用 Cursor 打开 ${target}`);
-          } catch {
-            return fail("打不开 Cursor，确认已安装并加入 PATH");
-          }
-        }
         return fail("打不开 Cursor，确认已安装并加入 PATH");
       }
     }
     case "open_url": {
       const href = item.url || item.sourceRaw;
       if (!href) return fail("没有网址");
+      if (href.startsWith("file://") || href.toLowerCase().endsWith(".app")) {
+        return openPath(href);
+      }
       await shell.openExternal(href);
       return ok(`已在浏览器打开 ${href}`);
     }
@@ -92,7 +143,7 @@ export async function launchResolved(
         const script = cwd
           ? `tell application "Terminal" to do script ${JSON.stringify(`cd ${JSON.stringify(cwd)} && ${cmd}`)}`
           : `tell application "Terminal" to do script ${JSON.stringify(cmd)}`;
-        await execAsync(`osascript -e ${JSON.stringify(script)}`);
+        await execFileAsync("/usr/bin/osascript", ["-e", script], { env: cleanLaunchEnv() });
         return ok("已在终端运行启动命令");
       }
       if (process.platform === "win32") {

@@ -1,5 +1,5 @@
-import type { ItemDraft, ItemType } from "@shared/types";
-import { inspectPath } from "../inspect";
+import type { ChatStep, ItemDraft, ItemType } from "@shared/types";
+import { cleanAppName, inspectPath, resolveApp } from "../inspect";
 import { searchItems } from "../catalog";
 import type { ToolRuntime } from "../tools";
 
@@ -9,24 +9,36 @@ const URL_RE = /https?:\/\/[^\s]+/i;
 const PATH_RE = /(\/[^\s]+|[A-Za-z]:\\[^\s]+|~\/[^\s]+)/;
 const GIT_RE = /(?:git@|https?:\/\/)(?:github|gitlab)\.com[^\s]+/i;
 
-export function runLocalFallback(userText: string): {
+export async function runLocalFallback(
+  userText: string,
+  onStep?: (step: ChatStep) => void
+): Promise<{
   text: string;
   drafts: ItemDraft[];
   matches: ToolRuntime["matches"];
-} {
+  steps: ChatStep[];
+}> {
   const text = userText.trim();
   const remember = REMEMBER_RE.test(text);
   const url = text.match(URL_RE)?.[0];
   const git = text.match(GIT_RE)?.[0];
   const pathMatch = text.match(PATH_RE)?.[0];
 
+  const steps: ChatStep[] = [];
+  const emit = (step: ChatStep) => {
+    steps.push(step);
+    onStep?.(step);
+  };
+
   if (!remember) {
+    emit({ title: `在记忆里搜「${text}」` });
     const matches = searchItems(text);
     if (matches.length === 0) {
       return {
         text: "本地检索没有找到。设置里填上模型密钥后，我可以帮你分析再记、再找。",
         drafts: [],
-        matches: []
+        matches: [],
+        steps
       };
     }
     const lines = matches.map(
@@ -36,29 +48,41 @@ export function runLocalFallback(userText: string): {
       matches.length === 1
         ? `要我帮你${actionHint(matches[0].type)}「${matches[0].title}」吗？`
         : "要我帮你打开哪一个？回复编号，或说不用。";
-    return { text: `找到这些：\n${lines.join("\n")}\n\n${ask}`, drafts: [], matches };
+    emit({ title: `找到 ${matches.length} 条` });
+    return { text: `找到这些：\n${lines.join("\n")}\n\n${ask}`, drafts: [], matches, steps };
   }
 
-  if (APP_RE.test(text)) {
-    const name =
-      text.match(/名字叫\s*([^\s,，。]+)/)?.[1] ||
-      text.match(/叫\s*([^\s,，。]+)/)?.[1] ||
-      "未命名软件";
+  const named =
+    text.match(/名字叫\s*([^\s,，。]+)/)?.[1] ||
+    text.match(/记住[：:]\s*([^\s,，。]+)/)?.[1] ||
+    text.match(/叫\s*([^\s,，。]+)/)?.[1];
+  if (APP_RE.test(text) || named) {
+    const name = cleanAppName(named || text) || "未命名软件";
+    emit({ title: `按软件名查找 ${name}` });
+    const resolved = await resolveApp(name);
     const draft: ItemDraft = {
       title: name,
       type: "app",
       category: "软件",
       appName: name,
+      path: resolved.path || "",
       sourceKind: "app",
       sourceRaw: text,
       body: text,
       summary: text.replace(REMEMBER_RE, "").trim(),
       keywords: extractKeywords(text).concat(name)
     };
+    emit({
+      title: `按软件名查找 ${name}`,
+      detail: resolved.found && resolved.path ? `找到 ${resolved.path}` : "本机没搜到匹配路径"
+    });
     return {
-      text: "还没配置模型，我按字面整理了一张确认卡。核对软件名后点保存。设置密钥后我可以先在本机帮你找这个软件。",
+      text: resolved.path
+        ? `找到了 ${resolved.path}，看确认卡后点保存。`
+        : "本机没搜到安装路径，先按软件名做成确认卡，你可以补路径再保存。",
       drafts: [draft],
-      matches: []
+      matches: [],
+      steps
     };
   }
 
@@ -76,7 +100,8 @@ export function runLocalFallback(userText: string): {
           keywords: extractKeywords(text)
         }
       ],
-      matches: []
+      matches: [],
+      steps
     };
   }
 
@@ -94,7 +119,8 @@ export function runLocalFallback(userText: string): {
           keywords: extractKeywords(text)
         }
       ],
-      matches: []
+      matches: [],
+      steps
     };
   }
 
@@ -117,7 +143,8 @@ export function runLocalFallback(userText: string): {
           keywords: extractKeywords(text)
         }
       ],
-      matches: []
+      matches: [],
+      steps
     };
   }
 
@@ -134,7 +161,8 @@ export function runLocalFallback(userText: string): {
         keywords: extractKeywords(text)
       }
     ],
-    matches: []
+    matches: [],
+    steps
   };
 }
 

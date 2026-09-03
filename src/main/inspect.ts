@@ -183,54 +183,95 @@ function listDirSafe(dir: string): string[] {
   }
 }
 
-export async function resolveApp(name: string): Promise<ResolveAppResult> {
-  const needle = name.trim();
-  const candidates: string[] = [];
-  if (!needle) return { name: needle, found: false, candidates };
+export function cleanAppName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const asPath = expandUserPath(trimmed.replace(/^file:\/\//, ""));
+  if (asPath.endsWith(".app") || (path.isAbsolute(asPath) && fs.existsSync(asPath))) {
+    return path.basename(asPath).replace(/\.app$/i, "");
+  }
+  let cleaned = trimmed.replace(/^(记住|记一下|存下来|帮我记|记下)[：:\s]*/u, "");
+  cleaned = cleaned.replace(/\.app$/i, "");
+  cleaned = cleaned.split(/[\s,，。！？、；;：:]+/).find(Boolean) || cleaned;
+  return cleaned.replace(/[“”"'‘’]/g, "").trim();
+}
 
-  if (process.platform === "darwin") {
-    const roots = ["/Applications", path.join(os.homedir(), "Applications")];
-    for (const root of roots) {
-      for (const entry of listDirSafe(root)) {
-        if (entry.toLowerCase().includes(needle.toLowerCase()) && entry.endsWith(".app")) {
-          candidates.push(entry);
+function pushCandidate(candidates: string[], target: string): void {
+  const resolved = expandUserPath(target.replace(/^file:\/\//, ""));
+  if (!resolved || !fs.existsSync(resolved) || candidates.includes(resolved)) return;
+  candidates.push(resolved);
+}
+
+function basenameMatch(entry: string, needle: string): boolean {
+  const base = path.basename(entry).replace(/\.app$/i, "").toLowerCase();
+  const n = needle.toLowerCase();
+  return base === n || base.includes(n) || n.includes(base);
+}
+
+export async function resolveApp(name: string): Promise<ResolveAppResult> {
+  const raw = name.trim();
+  const needle = cleanAppName(raw);
+  const candidates: string[] = [];
+  if (!raw && !needle) return { name: "", found: false, candidates };
+
+  pushCandidate(candidates, raw);
+  if (needle) {
+    if (process.platform === "darwin") {
+      pushCandidate(candidates, `/Applications/${needle}.app`);
+      pushCandidate(candidates, path.join(os.homedir(), "Applications", `${needle}.app`));
+      const roots = ["/Applications", path.join(os.homedir(), "Applications")];
+      for (const root of roots) {
+        for (const entry of listDirSafe(root)) {
+          if (entry.endsWith(".app") && basenameMatch(entry, needle)) {
+            pushCandidate(candidates, entry);
+          }
         }
       }
-    }
-    try {
-      const { stdout } = await execFileAsync("mdfind", [
-        `kMDItemKind == 'Application' && kMDItemDisplayName == '*${needle}*'c`
-      ]);
-      for (const line of stdout.split("\n").map((s) => s.trim()).filter(Boolean)) {
-        if (!candidates.includes(line)) candidates.push(line);
-      }
-    } catch {
-      // Spotlight may be unavailable.
-    }
-  } else if (process.platform === "win32") {
-    const roots = [
-      process.env.ProgramFiles,
-      process.env["ProgramFiles(x86)"],
-      path.join(os.homedir(), "AppData", "Local", "Programs"),
-      path.join(process.env.ProgramData || "C:\\ProgramData", "Microsoft", "Windows", "Start Menu", "Programs")
-    ].filter(Boolean) as string[];
-    for (const root of roots) {
       try {
-        const { stdout } = await execFileAsync("cmd", [
-          "/c",
-          `dir /s /b "${root}\\*${needle}*.exe"`
-        ]);
-        for (const line of stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, 20)) {
-          candidates.push(line);
+        const { stdout } = await execFileAsync(
+          "mdfind",
+          [`kMDItemKind == 'Application' && kMDItemDisplayName == '*${needle}*'c`],
+          { timeout: 3000 }
+        );
+        for (const line of stdout.split("\n").map((s) => s.trim()).filter(Boolean)) {
+          pushCandidate(candidates, line);
         }
       } catch {
-        // ignore missing dirs
+        // Spotlight 超时或不可用就跳过
+      }
+    } else if (process.platform === "win32") {
+      pushCandidate(candidates, path.join(process.env.ProgramFiles || "C:\\Program Files", needle, `${needle}.exe`));
+      const roots = [
+        process.env.ProgramFiles,
+        process.env["ProgramFiles(x86)"],
+        path.join(os.homedir(), "AppData", "Local", "Programs"),
+        path.join(
+          process.env.ProgramData || "C:\\ProgramData",
+          "Microsoft",
+          "Windows",
+          "Start Menu",
+          "Programs"
+        )
+      ].filter(Boolean) as string[];
+      for (const root of roots) {
+        try {
+          const { stdout } = await execFileAsync(
+            "cmd",
+            ["/c", `dir /s /b "${root}\\*${needle}*.exe"`],
+            { timeout: 3000 }
+          );
+          for (const line of stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, 20)) {
+            pushCandidate(candidates, line);
+          }
+        } catch {
+          // ignore missing dirs
+        }
       }
     }
   }
 
   return {
-    name: needle,
+    name: needle || raw,
     found: candidates.length > 0,
     path: candidates[0],
     candidates: candidates.slice(0, 12)

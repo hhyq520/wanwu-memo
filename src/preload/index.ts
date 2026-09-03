@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   AppSettingsInput,
+  ChatStep,
   ItemDraft,
   LaunchAction
 } from "../shared/types";
@@ -19,7 +20,14 @@ const api = {
       ipcRenderer.invoke("chat:send", conversationId, text),
     list: () => ipcRenderer.invoke("chat:list"),
     messages: (id?: string) => ipcRenderer.invoke("chat:messages", id),
-    new: () => ipcRenderer.invoke("chat:new")
+    new: () => ipcRenderer.invoke("chat:new"),
+    onStep: (cb: (step: ChatStep) => void) => {
+      const listener = (_event: unknown, step: ChatStep) => cb(step);
+      ipcRenderer.on("chat:step", listener);
+      return () => {
+        ipcRenderer.removeListener("chat:step", listener);
+      };
+    }
   },
   launch: {
     run: (id: string, action: LaunchAction) => ipcRenderer.invoke("launch:run", id, action)
