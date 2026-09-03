@@ -11,12 +11,20 @@ export function SettingsPane({ onToast, onImported }: Props) {
   const [model, setModel] = useState(PROVIDER_DEFAULTS.deepseek.defaultModel);
   const [apiKey, setApiKey] = useState("");
   const [apiKeySet, setApiKeySet] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
 
   useEffect(() => {
     void window.api.settings.get().then((s) => {
       setProvider(s.provider);
       setModel(s.model);
       setApiKeySet(s.apiKeySet);
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.api.transfer.onProgress((step) => {
+      setProgress(step.detail ? `${step.title} · ${step.detail}` : step.title);
     });
   }, []);
 
@@ -29,6 +37,24 @@ export function SettingsPane({ onToast, onImported }: Props) {
     setApiKey("");
     setApiKeySet(next.apiKeySet);
     onToast("设置已保存，密钥只留在这台电脑");
+  }
+
+  async function runTransfer(kind: "import" | "enrich") {
+    setBusy(true);
+    setProgress(kind === "import" ? "正在读 Chrome 书签…" : "正在补全书签简介…");
+    try {
+      const result =
+        kind === "import"
+          ? await window.api.transfer.importChrome()
+          : await window.api.transfer.enrichUrls();
+      onToast(result.message);
+      if (result.ok) onImported?.();
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
   }
 
   return (
@@ -73,17 +99,24 @@ export function SettingsPane({ onToast, onImported }: Props) {
       </div>
 
       <h2 style={{ marginTop: 28 }}>Chrome 书签</h2>
-      <p>读取本机 Google Chrome 的收藏，全部写入「收藏网址」。已有相同网址会跳过。</p>
+      <p>
+        读取本机 Google Chrome 的收藏，全部写入「收藏网址」。导入后会抓网页简介，方便以后按用途找到；已有相同网址会跳过。以前导入、还只有「文件夹 · 网址」的条目，用「补全书签简介」。书签多时可能要几分钟。
+      </p>
+      {progress ? <p className="settings-progress">{progress}</p> : null}
       <div className="actions">
         <button
           className="solid"
-          onClick={async () => {
-            const result = await window.api.transfer.importChrome();
-            onToast(result.message);
-            if (result.ok) onImported?.();
-          }}
+          disabled={busy}
+          onClick={() => void runTransfer("import")}
         >
           导入 Chrome 书签
+        </button>
+        <button
+          className="ghost"
+          disabled={busy}
+          onClick={() => void runTransfer("enrich")}
+        >
+          补全书签简介
         </button>
       </div>
 

@@ -48,7 +48,15 @@ const api = {
   transfer: {
     export: () => ipcRenderer.invoke("transfer:export"),
     import: (mode: "merge" | "overwrite") => ipcRenderer.invoke("transfer:import", mode),
-    importChrome: () => ipcRenderer.invoke("transfer:importChrome")
+    importChrome: () => ipcRenderer.invoke("transfer:importChrome"),
+    enrichUrls: () => ipcRenderer.invoke("transfer:enrichUrls"),
+    onProgress: (cb: (step: ChatStep) => void) => {
+      const listener = (_event: unknown, step: ChatStep) => cb(step);
+      ipcRenderer.on("transfer:progress", listener);
+      return () => {
+        ipcRenderer.removeListener("transfer:progress", listener);
+      };
+    }
   }
 };
 

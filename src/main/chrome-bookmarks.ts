@@ -3,8 +3,9 @@ import { dialog } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ImportResult, ItemDraft } from "@shared/types";
+import type { CatalogItem, ChatStep, ImportResult, ItemDraft } from "@shared/types";
 import { getItem, getItemByUrl, upsertItem } from "./catalog";
+import { enrichUrlItems } from "./enrich";
 
 interface ChromeNode {
   type?: string;
@@ -116,9 +117,9 @@ async function pickBookmarksFile(): Promise<string | null> {
   return result.filePaths[0];
 }
 
-export async function importChromeBookmarks(): Promise<
-  ImportResult & { ok: boolean; message: string }
-> {
+export async function importChromeBookmarks(
+  onProgress?: (step: ChatStep) => void
+): Promise<ImportResult & { ok: boolean; message: string }> {
   let files = defaultBookmarkFiles();
   if (files.length === 0) {
     const picked = await pickBookmarksFile();
@@ -151,13 +152,23 @@ export async function importChromeBookmarks(): Promise<
 
   let imported = 0;
   let skipped = 0;
+  const created: CatalogItem[] = [];
   for (const draft of drafts) {
     if (getItem(draft.id || "") || getItemByUrl(draft.url || "")) {
       skipped += 1;
       continue;
     }
-    upsertItem(draft);
+    created.push(upsertItem(draft));
     imported += 1;
+  }
+
+  let extra = "";
+  if (created.length > 0) {
+    onProgress?.({ title: "抓取网页简介", detail: `共 ${created.length} 条` });
+    const enrich = await enrichUrlItems(created, onProgress);
+    extra = `，补全 ${enrich.enriched} 条简介`;
+    if (enrich.tagged) extra += `，标注 ${enrich.tagged} 条关键词`;
+    if (enrich.failed) extra += `，${enrich.failed} 条网页没读到`;
   }
 
   return {
@@ -165,6 +176,6 @@ export async function importChromeBookmarks(): Promise<
     imported,
     skipped,
     overwritten: 0,
-    message: `导入 Chrome 书签 ${imported} 条，跳过已有 ${skipped} 条`
+    message: `导入 Chrome 书签 ${imported} 条，跳过已有 ${skipped} 条${extra}`
   };
 }

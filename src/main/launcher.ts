@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { shell } from "electron";
 import type { CatalogItem, LaunchAction, LaunchResult } from "@shared/types";
 import { getItem } from "./catalog";
+import { sanitizeLaunchCommand } from "./inspect";
 import { expandUserPath } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -136,9 +137,9 @@ export async function launchResolved(
       return ok(`已在浏览器打开 ${href}`);
     }
     case "run_command": {
-      if (!item.launchCommand) return fail("没有启动命令");
+      const cmd = sanitizeLaunchCommand(item.launchCommand);
+      if (!cmd) return fail("没有启动命令");
       const cwd = item.path ? expandUserPath(item.path) : undefined;
-      const cmd = item.launchCommand;
       if (process.platform === "darwin") {
         const script = cwd
           ? `tell application "Terminal" to do script ${JSON.stringify(`cd ${JSON.stringify(cwd)} && ${cmd}`)}`

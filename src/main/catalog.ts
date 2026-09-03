@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import type { CatalogItem, ItemDraft, ItemType, OpenWith, SourceKind } from "@shared/types";
 import { getDb } from "./db";
+import { sanitizeLaunchCommand } from "./inspect";
 import { expandUserPath, portablePath } from "./paths";
 
 interface ItemRow {
@@ -125,7 +126,7 @@ export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
     appName: draft.appName ?? existing?.appName ?? "",
     path: pathValue,
     url: draft.url ?? existing?.url ?? "",
-    launchCommand: draft.launchCommand ?? existing?.launchCommand ?? "",
+    launchCommand: sanitizeLaunchCommand(draft.launchCommand ?? existing?.launchCommand ?? ""),
     openWith: draft.openWith ?? existing?.openWith ?? "default",
     body: draft.body ?? existing?.body ?? "",
     summary: draft.summary ?? existing?.summary ?? "",
@@ -159,21 +160,86 @@ export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
   return getItem(id)!;
 }
 
-function ftsQuery(raw: string): string {
-  return raw
+const PURPOSE_SYNONYMS: Record<string, string[]> = {
+  设计: ["design", "designer"],
+  design: ["设计"],
+  designer: ["设计"],
+  网站: ["website", "web", "site"],
+  website: ["网站"],
+  web: ["网站"],
+  site: ["网站"],
+  下载: ["download"],
+  download: ["下载"],
+  视频: ["video"],
+  video: ["视频"],
+  图片: ["image", "photo", "pic"],
+  image: ["图片"],
+  photo: ["图片"],
+  写作: ["writing", "write"],
+  writing: ["写作"],
+  write: ["写作"],
+  笔记: ["note", "memo"],
+  note: ["笔记"],
+  memo: ["备忘", "笔记"],
+  备忘: ["memo", "note"],
+  效率: ["productivity"],
+  productivity: ["效率"],
+  浏览器: ["browser"],
+  browser: ["浏览器"],
+  音乐: ["music"],
+  music: ["音乐"],
+  电影: ["movie", "film"],
+  movie: ["电影"],
+  剪辑: ["edit", "editing"],
+  翻译: ["translate", "translation"],
+  translate: ["翻译"],
+  translation: ["翻译"],
+  代码: ["code", "coding"],
+  code: ["代码"],
+  coding: ["代码"],
+  开发: ["dev", "develop", "development"],
+  develop: ["开发"],
+  development: ["开发"],
+  会议: ["meeting"],
+  meeting: ["会议"],
+  邮箱: ["email", "mail"],
+  email: ["邮箱"],
+  日历: ["calendar"],
+  calendar: ["日历"],
+  云盘: ["drive", "cloud", "storage"],
+  存储: ["storage", "cloud"],
+  人工智能: ["AI"],
+  生成: ["generate", "generator"],
+  generate: ["生成"],
+  generator: ["生成"]
+};
+
+function expandSearchTokens(query: string): string[] {
+  const parts = query
     .split(/[\s,，、]+/)
     .map((part) => part.replace(/["']/g, "").trim())
-    .filter((part) => part.length > 0)
-    .map((part) => `"${part}"`)
-    .join(" OR ");
+    .filter(Boolean);
+  const out = new Set<string>(parts);
+  const lower = query.toLowerCase();
+  for (const [key, extras] of Object.entries(PURPOSE_SYNONYMS)) {
+    if (query.includes(key) || lower.includes(key.toLowerCase())) {
+      out.add(key);
+      for (const extra of extras) out.add(extra);
+    }
+  }
+  return [...out].filter((token) => token.length >= 2);
 }
 
-export function searchItems(query: string): CatalogItem[] {
+function ftsQuery(tokens: string[]): string {
+  return tokens.map((part) => `"${part.replace(/["']/g, "")}"`).join(" OR ");
+}
+
+function searchItemsRaw(query: string): CatalogItem[] {
   const q = query.trim();
   if (!q) return [];
   const db = getDb();
   const seen = new Map<string, CatalogItem>();
-  const match = ftsQuery(q);
+  const match = ftsQuery(q.split(/[\s,，、]+/).filter(Boolean));
   if (match) {
     try {
       const rows = db
@@ -202,17 +268,20 @@ export function searchItems(query: string): CatalogItem[] {
   for (const row of likeRows) {
     if (!seen.has(row.id)) seen.set(row.id, rowToItem(row));
   }
+  return [...seen.values()];
+}
 
-  const tokens = q.split(/[\s,，、]+/).filter((t) => t.length >= 2);
-  if (tokens.length > 1) {
-    for (const token of tokens) {
-      const extra = searchItems(token);
-      for (const item of extra) {
-        if (!seen.has(item.id)) seen.set(item.id, item);
-      }
+export function searchItems(query: string): CatalogItem[] {
+  const q = query.trim();
+  if (!q) return [];
+  const seen = new Map<string, CatalogItem>();
+  for (const item of searchItemsRaw(q)) seen.set(item.id, item);
+  for (const token of expandSearchTokens(q)) {
+    if (token === q) continue;
+    for (const item of searchItemsRaw(token)) {
+      if (!seen.has(item.id)) seen.set(item.id, item);
     }
   }
-
   return [...seen.values()];
 }
 

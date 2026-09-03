@@ -61,35 +61,13 @@ function migrate(database: Database.Database): void {
       FOREIGN KEY (conversation_id) REFERENCES conversations(id)
     );
 
-    CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
-      title,
-      summary,
-      howto,
-      body,
-      tags,
-      keywords,
-      app_name,
-      content='items',
-      content_rowid='rowid'
+    CREATE TABLE IF NOT EXISTS schema_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
     );
-
-    CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
-      INSERT INTO items_fts(rowid, title, summary, howto, body, tags, keywords, app_name)
-      VALUES (new.rowid, new.title, new.summary, new.howto, new.body, new.tags, new.keywords, new.app_name);
-    END;
-
-    CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
-      INSERT INTO items_fts(items_fts, rowid, title, summary, howto, body, tags, keywords, app_name)
-      VALUES ('delete', old.rowid, old.title, old.summary, old.howto, old.body, old.tags, old.keywords, old.app_name);
-    END;
-
-    CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
-      INSERT INTO items_fts(items_fts, rowid, title, summary, howto, body, tags, keywords, app_name)
-      VALUES ('delete', old.rowid, old.title, old.summary, old.howto, old.body, old.tags, old.keywords, old.app_name);
-      INSERT INTO items_fts(rowid, title, summary, howto, body, tags, keywords, app_name)
-      VALUES (new.rowid, new.title, new.summary, new.howto, new.body, new.tags, new.keywords, new.app_name);
-    END;
   `);
+
+  ensureItemsFts(database);
 
   const presets = [
     ["软件", 1],
@@ -105,6 +83,63 @@ function migrate(database: Database.Database): void {
     "INSERT OR IGNORE INTO categories (name, sort) VALUES (?, ?)"
   );
   for (const [name, sort] of presets) insert.run(name, sort);
+}
+
+const FTS_VERSION = "v2-url";
+
+function ensureItemsFts(database: Database.Database): void {
+  const ready =
+    (
+      database.prepare("SELECT value FROM schema_meta WHERE key = ?").get("fts") as
+        | { value: string }
+        | undefined
+    )?.value === FTS_VERSION;
+
+  if (!ready) {
+    database.exec(`
+      DROP TRIGGER IF EXISTS items_ai;
+      DROP TRIGGER IF EXISTS items_ad;
+      DROP TRIGGER IF EXISTS items_au;
+      DROP TABLE IF EXISTS items_fts;
+    `);
+  }
+
+  database.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+      title,
+      summary,
+      howto,
+      body,
+      tags,
+      keywords,
+      app_name,
+      url,
+      content='items',
+      content_rowid='rowid'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
+      INSERT INTO items_fts(rowid, title, summary, howto, body, tags, keywords, app_name, url)
+      VALUES (new.rowid, new.title, new.summary, new.howto, new.body, new.tags, new.keywords, new.app_name, new.url);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
+      INSERT INTO items_fts(items_fts, rowid, title, summary, howto, body, tags, keywords, app_name, url)
+      VALUES ('delete', old.rowid, old.title, old.summary, old.howto, old.body, old.tags, old.keywords, old.app_name, old.url);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
+      INSERT INTO items_fts(items_fts, rowid, title, summary, howto, body, tags, keywords, app_name, url)
+      VALUES ('delete', old.rowid, old.title, old.summary, old.howto, old.body, old.tags, old.keywords, old.app_name, old.url);
+      INSERT INTO items_fts(rowid, title, summary, howto, body, tags, keywords, app_name, url)
+      VALUES (new.rowid, new.title, new.summary, new.howto, new.body, new.tags, new.keywords, new.app_name, new.url);
+    END;
+  `);
+
+  if (!ready) {
+    database.exec(`INSERT INTO items_fts(items_fts) VALUES('rebuild')`);
+    database.prepare("INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)").run("fts", FTS_VERSION);
+  }
 }
 
 export function closeDb(): void {

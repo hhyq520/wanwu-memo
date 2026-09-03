@@ -59,10 +59,16 @@ export const TOOL_DEFINITIONS = [
     type: "function" as const,
     function: {
       name: "search_items",
-      description: "在已保存的记忆里模糊查找。用户在找东西时必须先调用，再根据结果列举并询问下一步。",
+      description:
+        "在已保存的记忆里模糊查找。用户在找东西时必须先调用。用途/需求类问题要连搜 2 到 4 次：原句、中英同义词、常见产品名或域名。只根据返回结果列举，不要编造未搜到的条目。",
       parameters: {
         type: "object",
-        properties: { query: { type: "string", description: "关键词，可含同义词，空格分隔" } },
+        properties: {
+          query: {
+            type: "string",
+            description: "一次一个检索式。可含同义词，空格分隔。例：AI 设计网站 / AI design / v0 midjourney"
+          }
+        },
         required: ["query"]
       }
     }

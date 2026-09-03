@@ -107,6 +107,12 @@ export interface ImportResult {
   overwritten: number;
 }
 
+export interface EnrichResult {
+  enriched: number;
+  failed: number;
+  tagged: number;
+}
+
 export type LaunchAction =
   | "open_app"
   | "open_folder"

@@ -24,6 +24,20 @@ function readTextLimited(filePath: string): string | undefined {
   }
 }
 
+const COMPOSE_FILES = [
+  "compose.yaml",
+  "compose.yml",
+  "docker-compose.yaml",
+  "docker-compose.yml"
+];
+
+export function sanitizeLaunchCommand(raw: string): string {
+  let cmd = raw.replace(/\r/g, "\n").split("\n")[0] ?? "";
+  cmd = cmd.replace(/#.*$/, "");
+  cmd = cmd.split(/\s+或\s+|\s+or\s+/i)[0] ?? "";
+  return cmd.replace(/\s+/g, " ").trim();
+}
+
 function guessCommand(manifests: Record<string, unknown>, readme?: string): string | undefined {
   const pkg = manifests["package.json"] as { scripts?: Record<string, string> } | undefined;
   if (pkg?.scripts) {
@@ -31,12 +45,13 @@ function guessCommand(manifests: Record<string, unknown>, readme?: string): stri
       if (pkg.scripts[name]) return `npm run ${name}`;
     }
   }
+  if (COMPOSE_FILES.some((name) => manifests[name])) return "docker compose up -d --build";
   if (manifests["pyproject.toml"] || manifests["requirements.txt"]) return "python main.py";
   if (manifests["Cargo.toml"]) return "cargo run";
   if (manifests["go.mod"]) return "go run .";
   if (readme) {
-    const match = readme.match(/`((?:npm|pnpm|yarn|uv|python|cargo|go)[^`]+)`/);
-    if (match) return match[1];
+    const match = readme.match(/`((?:npm|pnpm|yarn|uv|python|cargo|go|docker)[^`]+)`/);
+    if (match) return sanitizeLaunchCommand(match[1]) || undefined;
   }
   return undefined;
 }
@@ -64,7 +79,8 @@ export function inspectPath(rawPath: string): InspectPathResult {
     "Cargo.toml",
     "go.mod",
     "composer.json",
-    "Makefile"
+    "Makefile",
+    ...COMPOSE_FILES
   ];
   for (const name of manifestNames) {
     const text = readTextLimited(path.join(dir, name));

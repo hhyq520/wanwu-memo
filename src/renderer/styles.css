@@ -65,10 +65,23 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   border-right: 1px solid var(--cabinet-line);
 }
 
+.drawer-cats {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .brand {
+  flex-shrink: 0;
   padding: 0 8px 18px;
 }
 
@@ -117,7 +130,10 @@ button {
 }
 
 .drawer-foot {
-  margin-top: auto;
+  flex-shrink: 0;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cabinet-line);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -339,6 +355,18 @@ button {
   margin-top: 12px;
 }
 
+.settings-progress {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .messages {
   flex: 1;
   overflow: auto;
@@ -426,7 +454,8 @@ button {
   font-size: 13px;
 }
 
-.settings-pane p {
+.settings-pane p,
+.settings-progress {
   color: var(--muted);
   line-height: 1.6;
 }

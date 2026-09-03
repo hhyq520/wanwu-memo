@@ -6,6 +6,7 @@ import type {
   ChatStep,
   ChatTurnResult,
   Conversation,
+  EnrichResult,
   ImportResult,
   ItemDraft,
   LaunchAction,
@@ -42,5 +43,7 @@ export interface DesktopApi {
     export: () => Promise<{ ok: boolean; filePath?: string; message: string }>;
     import: (mode: "merge" | "overwrite") => Promise<ImportResult & { ok: boolean; message: string }>;
     importChrome: () => Promise<ImportResult & { ok: boolean; message: string }>;
+    enrichUrls: () => Promise<EnrichResult & { ok: boolean; message: string }>;
+    onProgress: (cb: (step: ChatStep) => void) => () => void;
   };
 }

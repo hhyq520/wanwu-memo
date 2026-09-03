@@ -90,28 +90,30 @@ export function App() {
           <div className="brand-kicker">LOCAL INDEX</div>
           <h1 className="brand-name">万物备忘</h1>
         </div>
-        <button
-          className={`tab ${view === "library" && category === "全部" ? "is-on" : ""}`}
-          onClick={() => {
-            setView("library");
-            setCategory("全部");
-          }}
-        >
-          全部
-        </button>
-        {categories.map((name) => (
+        <div className="drawer-cats">
           <button
-            key={name}
-            className={`tab ${view === "library" && category === name ? "is-on" : ""}`}
+            className={`tab ${view === "library" && category === "全部" ? "is-on" : ""}`}
             onClick={() => {
               setView("library");
-              setCategory(name);
+              setCategory("全部");
             }}
           >
-            <span>{name}</span>
-            {counts.get(name) ? <span className="tab-count">{counts.get(name)}</span> : null}
+            全部
           </button>
-        ))}
+          {categories.map((name) => (
+            <button
+              key={name}
+              className={`tab ${view === "library" && category === name ? "is-on" : ""}`}
+              onClick={() => {
+                setView("library");
+                setCategory(name);
+              }}
+            >
+              <span>{name}</span>
+              {counts.get(name) ? <span className="tab-count">{counts.get(name)}</span> : null}
+            </button>
+          ))}
+        </div>
         <div className="drawer-foot">
           <button className={`tab ${view === "chat" ? "is-on" : ""}`} onClick={() => setView("chat")}>
             对话
