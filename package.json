@@ -12,7 +12,8 @@
     "node": "20.20.2"
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/run-electron.cjs dev",
+    "start": "node scripts/run-electron.cjs start",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
