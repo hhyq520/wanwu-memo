@@ -3,9 +3,10 @@ import { PROVIDER_DEFAULTS, type ProviderId } from "@shared/types";
 
 interface Props {
   onToast: (text: string) => void;
+  onImported?: () => void;
 }
 
-export function SettingsPane({ onToast }: Props) {
+export function SettingsPane({ onToast, onImported }: Props) {
   const [provider, setProvider] = useState<ProviderId>("deepseek");
   const [model, setModel] = useState(PROVIDER_DEFAULTS.deepseek.defaultModel);
   const [apiKey, setApiKey] = useState("");
@@ -68,6 +69,21 @@ export function SettingsPane({ onToast }: Props) {
       <div className="actions">
         <button className="solid" onClick={() => void save()}>
           保存设置
+        </button>
+      </div>
+
+      <h2 style={{ marginTop: 28 }}>Chrome 书签</h2>
+      <p>读取本机 Google Chrome 的收藏，全部写入「收藏网址」。已有相同网址会跳过。</p>
+      <div className="actions">
+        <button
+          className="solid"
+          onClick={async () => {
+            const result = await window.api.transfer.importChrome();
+            onToast(result.message);
+            if (result.ok) onImported?.();
+          }}
+        >
+          导入 Chrome 书签
         </button>
       </div>
 

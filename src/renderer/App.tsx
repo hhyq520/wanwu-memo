@@ -68,7 +68,7 @@ export function App() {
         onToast={showToast}
       />
     ) : view === "settings" ? (
-      <SettingsPane onToast={showToast} />
+      <SettingsPane onToast={showToast} onImported={() => void reload()} />
     ) : showDetail ? (
       <ItemDetail
         item={selected}

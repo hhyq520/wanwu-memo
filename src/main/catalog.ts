@@ -96,6 +96,15 @@ export function getItem(id: string): CatalogItem | null {
   return row ? rowToItem(row) : null;
 }
 
+export function getItemByUrl(url: string): CatalogItem | null {
+  const href = url.trim();
+  if (!href) return null;
+  const row = getDb().prepare("SELECT * FROM items WHERE url = ? LIMIT 1").get(href) as
+    | ItemRow
+    | undefined;
+  return row ? rowToItem(row) : null;
+}
+
 export function deleteItem(id: string): boolean {
   const result = getDb().prepare("DELETE FROM items WHERE id = ?").run(id);
   return result.changes > 0;

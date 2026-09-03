@@ -41,5 +41,6 @@ export interface DesktopApi {
   transfer: {
     export: () => Promise<{ ok: boolean; filePath?: string; message: string }>;
     import: (mode: "merge" | "overwrite") => Promise<ImportResult & { ok: boolean; message: string }>;
+    importChrome: () => Promise<ImportResult & { ok: boolean; message: string }>;
   };
 }

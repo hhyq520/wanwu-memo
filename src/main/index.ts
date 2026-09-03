@@ -7,6 +7,7 @@ import { inspectGit, inspectPath, inspectUrl, resolveApp } from "./inspect";
 import { launchItem } from "./launcher";
 import { handleChat } from "./llm/router";
 import { getSettings, setSettings } from "./settings";
+import { importChromeBookmarks } from "./chrome-bookmarks";
 import { exportCatalog, importCatalog } from "./transfer";
 import type { AppSettingsInput, ItemDraft, LaunchAction } from "@shared/types";
 
@@ -129,4 +130,5 @@ function registerIpc(): void {
 
   ipcMain.handle("transfer:export", () => exportCatalog());
   ipcMain.handle("transfer:import", (_e, mode: "merge" | "overwrite") => importCatalog(mode));
+  ipcMain.handle("transfer:importChrome", () => importChromeBookmarks());
 }

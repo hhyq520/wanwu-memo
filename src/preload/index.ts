@@ -47,7 +47,8 @@ const api = {
   },
   transfer: {
     export: () => ipcRenderer.invoke("transfer:export"),
-    import: (mode: "merge" | "overwrite") => ipcRenderer.invoke("transfer:import", mode)
+    import: (mode: "merge" | "overwrite") => ipcRenderer.invoke("transfer:import", mode),
+    importChrome: () => ipcRenderer.invoke("transfer:importChrome")
   }
 };
 
