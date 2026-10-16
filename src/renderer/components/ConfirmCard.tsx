@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { CatalogItem, ItemDraft, ItemType } from "@shared/types";
+import { keepRemindDate } from "@shared/remind";
+import type { CatalogItem, ItemDraft, ItemType, RemindKind } from "@shared/types";
 import { TYPE_LABEL } from "../labels";
+import { RemindFields } from "./RemindFields";
 
 interface Props {
   draft: ItemDraft;
@@ -53,6 +55,18 @@ export function ConfirmCard({ draft, onSaved, onToast }: Props) {
           onChange={(e) => setLocal({ ...local, category: e.target.value })}
         />
       </label>
+      <RemindFields
+        kind={local.remindKind || "none"}
+        date={local.remindDate || ""}
+        createdAt={local.createdAt}
+        onChange={(kind: RemindKind, date: string) =>
+          setLocal({
+            ...local,
+            remindKind: kind,
+            remindDate: keepRemindDate(kind, kind === "date" ? date : local.remindDate || "")
+          })
+        }
+      />
       {local.type === "app" && (
         <label className="field">
           <span>软件名</span>

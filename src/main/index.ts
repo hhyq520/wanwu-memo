@@ -1,6 +1,17 @@
 import { app, BrowserWindow, ipcMain, clipboard } from "electron";
 import path from "node:path";
-import { deleteItem, getItem, listCategories, listItems, searchItems, upsertItem } from "./catalog";
+import { setReminderBadge } from "./badge";
+import {
+  deleteItem,
+  dismissReminder,
+  getItem,
+  listCategories,
+  listDueReminders,
+  listItems,
+  nextReminderAt,
+  searchItems,
+  upsertItem
+} from "./catalog";
 import { getOrCreateConversation, listConversations, listMessages, newConversation } from "./conversations";
 import { closeDb, getDb } from "./db";
 import { inspectGit, inspectPath, inspectUrl, resolveApp } from "./inspect";
@@ -18,6 +29,23 @@ if (!gotLock) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let reminderTimer: NodeJS.Timeout | null = null;
+let reminderSeq = 0;
+
+function armReminderClock(): void {
+  if (reminderTimer) clearTimeout(reminderTimer);
+  const upcoming = nextReminderAt(Date.now());
+  const wait = upcoming == null ? 60_000 : Math.max(200, upcoming - Date.now() + 50);
+  reminderTimer = setTimeout(() => publishReminders(), Math.min(60_000, wait));
+}
+
+function publishReminders() {
+  const feed = { seq: ++reminderSeq, items: listDueReminders() };
+  setReminderBadge(feed.items.length, mainWindow);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("reminders:due", feed);
+  armReminderClock();
+  return feed;
+}
 
 function focusMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -78,6 +106,8 @@ app.whenReady().then(() => {
   getDb();
   registerIpc();
   createWindow();
+  publishReminders();
+  app.on("browser-window-focus", () => publishReminders());
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     else focusMainWindow();
@@ -89,6 +119,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  if (reminderTimer) clearTimeout(reminderTimer);
   closeDb();
 });
 
@@ -96,9 +127,22 @@ function registerIpc(): void {
   ipcMain.handle("catalog:list", (_e, category?: string) => listItems(category));
   ipcMain.handle("catalog:get", (_e, id: string) => getItem(id));
   ipcMain.handle("catalog:search", (_e, query: string) => searchItems(query));
-  ipcMain.handle("catalog:upsert", (_e, draft: ItemDraft) => upsertItem(draft));
-  ipcMain.handle("catalog:delete", (_e, id: string) => deleteItem(id));
+  ipcMain.handle("catalog:upsert", (_e, draft: ItemDraft) => {
+    const item = upsertItem(draft);
+    publishReminders();
+    return item;
+  });
+  ipcMain.handle("catalog:delete", (_e, id: string) => {
+    const removed = deleteItem(id);
+    publishReminders();
+    return removed;
+  });
   ipcMain.handle("catalog:categories", () => listCategories());
+  ipcMain.handle("reminders:list", () => publishReminders());
+  ipcMain.handle("reminders:dismiss", (_e, id: string) => {
+    dismissReminder(id);
+    return publishReminders();
+  });
 
   ipcMain.handle("chat:send", (e, conversationId: string | undefined, text: string) =>
     handleChat(conversationId, text, (step) => {
@@ -130,12 +174,18 @@ function registerIpc(): void {
   ipcMain.handle("settings:set", (_e, input: AppSettingsInput) => setSettings(input));
 
   ipcMain.handle("transfer:export", () => exportCatalog());
-  ipcMain.handle("transfer:import", (_e, mode: "merge" | "overwrite") => importCatalog(mode));
-  ipcMain.handle("transfer:importChrome", (e) =>
-    importChromeBookmarks((step) => {
+  ipcMain.handle("transfer:import", async (_e, mode: "merge" | "overwrite") => {
+    const result = await importCatalog(mode);
+    publishReminders();
+    return result;
+  });
+  ipcMain.handle("transfer:importChrome", async (e) => {
+    const result = await importChromeBookmarks((step) => {
       e.sender.send("transfer:progress", step);
-    })
-  );
+    });
+    publishReminders();
+    return result;
+  });
   ipcMain.handle("transfer:enrichUrls", (e) =>
     enrichWeakUrlItems((step) => {
       e.sender.send("transfer:progress", step);

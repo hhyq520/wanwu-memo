@@ -3,7 +3,8 @@ import type {
   AppSettingsInput,
   ChatStep,
   ItemDraft,
-  LaunchAction
+  LaunchAction,
+  ReminderFeed
 } from "../shared/types";
 
 const api = {
@@ -14,6 +15,17 @@ const api = {
     upsert: (draft: ItemDraft) => ipcRenderer.invoke("catalog:upsert", draft),
     delete: (id: string) => ipcRenderer.invoke("catalog:delete", id),
     categories: () => ipcRenderer.invoke("catalog:categories")
+  },
+  reminders: {
+    list: () => ipcRenderer.invoke("reminders:list"),
+    dismiss: (id: string) => ipcRenderer.invoke("reminders:dismiss", id),
+    onDue: (cb: (feed: ReminderFeed) => void) => {
+      const listener = (_event: unknown, feed: ReminderFeed) => cb(feed);
+      ipcRenderer.on("reminders:due", listener);
+      return () => {
+        ipcRenderer.removeListener("reminders:due", listener);
+      };
+    }
   },
   chat: {
     send: (conversationId: string | undefined, text: string) =>

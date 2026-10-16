@@ -1,3 +1,4 @@
+import { stampReminder } from "@shared/remind";
 import type { ChatStep, ItemDraft, ItemType, SourceKind } from "@shared/types";
 import { rankItemsByQuery, searchItems, upsertItem } from "./catalog";
 import { inspectGit, inspectPath, inspectUrl, resolveApp } from "./inspect";
@@ -96,7 +97,18 @@ export const TOOL_DEFINITIONS = [
           summary: { type: "string" },
           howto: { type: "string" },
           sourceKind: { type: "string", enum: ["app", "local_path", "git", "url", "text"] },
-          sourceRaw: { type: "string" }
+          sourceRaw: { type: "string" },
+          remindKind: {
+            type: "string",
+            enum: ["none", "year", "date", "at"],
+            description:
+              "none 不提醒；year 满一年的前一天；date 指定日期的前一天；at 在说定的时刻提醒，时长不限。"
+          },
+          remindDate: {
+            type: "string",
+            description:
+              "date 时写 YYYY-MM-DD，是要记住的那一天。at 时写触发时刻的毫秒时间戳。"
+          }
         },
         required: ["title", "type"]
       }
@@ -125,7 +137,18 @@ export const TOOL_DEFINITIONS = [
           summary: { type: "string" },
           howto: { type: "string" },
           sourceKind: { type: "string", enum: ["app", "local_path", "git", "url", "text"] },
-          sourceRaw: { type: "string" }
+          sourceRaw: { type: "string" },
+          remindKind: {
+            type: "string",
+            enum: ["none", "year", "date", "at"],
+            description:
+              "none 不提醒；year 满一年的前一天；date 指定日期的前一天；at 在说定的时刻提醒，时长不限。"
+          },
+          remindDate: {
+            type: "string",
+            description:
+              "date 时写 YYYY-MM-DD，是要记住的那一天。at 时写触发时刻的毫秒时间戳。"
+          }
         },
         required: ["title", "type"]
       }
@@ -240,8 +263,18 @@ function asDraft(args: Record<string, unknown>): ItemDraft {
     summary: String(args.summary || ""),
     howto: String(args.howto || ""),
     sourceKind: (args.sourceKind as SourceKind) || "text",
-    sourceRaw: String(args.sourceRaw || "")
+    sourceRaw: String(args.sourceRaw || ""),
+    ...reminderArgs(args)
   };
+}
+
+function reminderArgs(args: Record<string, unknown>): Partial<ItemDraft> {
+  const patch: Partial<ItemDraft> = {};
+  if (args.remindKind === "none" || args.remindKind === "year" || args.remindKind === "date" || args.remindKind === "at") {
+    patch.remindKind = args.remindKind;
+  }
+  if (typeof args.remindDate === "string") patch.remindDate = args.remindDate.trim();
+  return patch;
 }
 
 export async function executeTool(
@@ -308,8 +341,9 @@ async function runTool(
       return JSON.stringify({ ok: true, draft, note: "已生成确认卡，等用户确定后再 upsert" });
     }
     case "upsert_item": {
-      const saved = upsertItem(asDraft(args));
-      return JSON.stringify({ ok: true, item: saved });
+      const stamped = stampReminder(runtime.userText || "", asDraft(args));
+      const saved = upsertItem(stamped.draft);
+      return JSON.stringify({ ok: true, item: saved, note: stamped.note || undefined });
     }
     default:
       return JSON.stringify({ error: `未知工具 ${name}` });

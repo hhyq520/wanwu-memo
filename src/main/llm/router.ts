@@ -1,4 +1,5 @@
-import type { ChatStep, ChatTurnResult } from "@shared/types";
+import { stampReminder } from "@shared/remind";
+import type { ChatStep, ChatTurnResult, ItemDraft } from "@shared/types";
 import { rankItemsByQuery } from "../catalog";
 import { addMessage, getOrCreateConversation, listMessages } from "../conversations";
 import { getApiKey, getSettings } from "../settings";
@@ -54,6 +55,9 @@ export async function handleChat(
     };
   }
 
+  const reminded = applyReminder(userText, result.drafts, result.text);
+  result = { ...result, text: reminded.text, drafts: reminded.drafts };
+
   const assistantMessage = addMessage(convo.id, "assistant", result.text, {
     drafts: result.drafts,
     matches: rankItemsByQuery(result.matches ?? [], userText),
@@ -61,4 +65,18 @@ export async function handleChat(
   });
 
   return { conversationId: convo.id, userMessage, assistantMessage };
+}
+
+function applyReminder(
+  userText: string,
+  drafts: ItemDraft[] | undefined,
+  text: string
+): { drafts: ItemDraft[] | undefined; text: string } {
+  if (!drafts?.length) return { drafts, text };
+  const stamped = drafts.map((draft) => stampReminder(userText, draft));
+  const note = stamped.find((item) => item.note)?.note;
+  return {
+    drafts: stamped.map((item) => item.draft),
+    text: note && !text.includes(note) ? `${text}\n\n${note}` : text
+  };
 }

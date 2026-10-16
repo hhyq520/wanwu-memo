@@ -16,6 +16,21 @@ export function getDb(): Database.Database {
   return db;
 }
 
+function ensureReminderColumns(database: Database.Database): void {
+  const columns = new Set(
+    (database.prepare("PRAGMA table_info(items)").all() as { name: string }[]).map((column) => column.name)
+  );
+  const add: [string, string][] = [
+    ["remind_kind", "remind_kind TEXT NOT NULL DEFAULT 'none'"],
+    ["remind_date", "remind_date TEXT NOT NULL DEFAULT ''"],
+    ["remind_at", "remind_at INTEGER NOT NULL DEFAULT 0"],
+    ["remind_dismissed_at", "remind_dismissed_at INTEGER NOT NULL DEFAULT 0"]
+  ];
+  for (const [name, ddl] of add) {
+    if (!columns.has(name)) database.exec(`ALTER TABLE items ADD COLUMN ${ddl}`);
+  }
+}
+
 function migrate(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS items (
@@ -68,6 +83,7 @@ function migrate(database: Database.Database): void {
   `);
 
   ensureItemsFts(database);
+  ensureReminderColumns(database);
 
   const presets = [
     ["软件", 1],

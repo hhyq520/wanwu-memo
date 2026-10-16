@@ -19,6 +19,9 @@ export const PRESET_CATEGORIES = [
   "未分类"
 ] as const;
 
+export const REMIND_KINDS = ["none", "year", "date", "at"] as const;
+export type RemindKind = (typeof REMIND_KINDS)[number];
+
 export type ProviderId = "cursor" | "deepseek" | "openai" | "zhipu";
 
 export interface CatalogItem {
@@ -40,6 +43,10 @@ export interface CatalogItem {
   sourceRaw: string;
   createdAt: number;
   updatedAt: number;
+  remindKind: RemindKind;
+  remindDate: string;
+  remindAt: number;
+  remindDismissedAt: number;
   pathMissing?: boolean;
 }
 
@@ -120,6 +127,11 @@ export type LaunchAction =
   | "open_url"
   | "run_command"
   | "copy_body";
+
+export interface ReminderFeed {
+  seq: number;
+  items: CatalogItem[];
+}
 
 export interface LaunchResult {
   ok: boolean;

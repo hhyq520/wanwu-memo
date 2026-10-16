@@ -1,3 +1,4 @@
+import { stampReminder } from "@shared/remind";
 import type { ChatStep, ItemDraft, ItemType } from "@shared/types";
 import { cleanAppName, inspectPath, resolveApp } from "../inspect";
 import { searchItems } from "../catalog";
@@ -29,17 +30,22 @@ export async function runLocalFallback(
     steps.push(step);
     onStep?.(step);
   };
+  const finish = (reply: string, drafts: ItemDraft[], matches: ToolRuntime["matches"]) => {
+    const stamped = drafts.map((draft) => stampReminder(text, draft));
+    const note = stamped.find((item) => item.note)?.note;
+    return {
+      text: note && !reply.includes(note) ? `${reply}\n\n${note}` : reply,
+      drafts: stamped.map((item) => item.draft),
+      matches,
+      steps
+    };
+  };
 
   if (!remember) {
     emit({ title: `在记忆里搜「${text}」` });
     const matches = searchItems(text);
     if (matches.length === 0) {
-      return {
-        text: "本地检索没有找到。设置里填上模型密钥后，我可以帮你分析再记、再找。",
-        drafts: [],
-        matches: [],
-        steps
-      };
+      return finish("本地检索没有找到。设置里填上模型密钥后，我可以帮你分析再记、再找。", [], []);
     }
     const lines = matches.map(
       (item, i) => `${i + 1}. ${item.title}（${typeLabel(item.type)}）${item.summary ? ` — ${item.summary}` : ""}`
@@ -49,7 +55,7 @@ export async function runLocalFallback(
         ? `要我帮你${actionHint(matches[0].type)}「${matches[0].title}」吗？`
         : "要我帮你打开哪一个？回复编号，或说不用。";
     emit({ title: `找到 ${matches.length} 条` });
-    return { text: `找到这些：\n${lines.join("\n")}\n\n${ask}`, drafts: [], matches, steps };
+    return finish(`找到这些：\n${lines.join("\n")}\n\n${ask}`, [], matches);
   }
 
   const named =
@@ -76,20 +82,17 @@ export async function runLocalFallback(
       title: `按软件名查找 ${name}`,
       detail: resolved.found && resolved.path ? `找到 ${resolved.path}` : "本机没搜到匹配路径"
     });
-    return {
-      text: resolved.path
+    return finish(
+      resolved.path
         ? `找到了 ${resolved.path}，看确认卡后点保存。`
         : "本机没搜到安装路径，先按软件名做成确认卡，你可以补路径再保存。",
-      drafts: [draft],
-      matches: [],
-      steps
-    };
+      [draft],
+      []
+    );
   }
 
   if (git) {
-    return {
-      text: "识别到 git 地址。没有模型时我无法拉 README，确认卡请你补全简介后保存。",
-      drafts: [
+    return finish("识别到 git 地址。没有模型时我无法拉 README，确认卡请你补全简介后保存。", [
         {
           title: git.split("/").filter(Boolean).pop() || git,
           type: "project",
@@ -100,15 +103,12 @@ export async function runLocalFallback(
           keywords: extractKeywords(text)
         }
       ],
-      matches: [],
-      steps
-    };
+      []
+    );
   }
 
   if (url) {
-    return {
-      text: "识别到网址。没有模型时只能先记下地址，确认后保存。",
-      drafts: [
+    return finish("识别到网址。没有模型时只能先记下地址，确认后保存。", [
         {
           title: url,
           type: "url",
@@ -119,18 +119,17 @@ export async function runLocalFallback(
           keywords: extractKeywords(text)
         }
       ],
-      matches: [],
-      steps
-    };
+      []
+    );
   }
 
   if (pathMatch) {
     const inspected = inspectPath(pathMatch);
-    return {
-      text: inspected.exists
+    return finish(
+      inspected.exists
         ? "识别到本地路径，并读了目录。没有模型，简介需要你看一眼再保存。"
         : "这个路径现在不存在。仍可以先存下来，换机导入后会标红。",
-      drafts: [
+      [
         {
           title: pathMatch.split(/[\\/]/).filter(Boolean).pop() || pathMatch,
           type: "project",
@@ -143,14 +142,11 @@ export async function runLocalFallback(
           keywords: extractKeywords(text)
         }
       ],
-      matches: [],
-      steps
-    };
+      []
+    );
   }
 
-  return {
-    text: "按原文记一条备忘。没有模型时关键词比较粗，确认后保存。",
-    drafts: [
+  return finish("按原文记一条备忘。没有模型时关键词比较粗，确认后保存。", [
       {
         title: text.slice(0, 24),
         type: "note",
@@ -161,9 +157,8 @@ export async function runLocalFallback(
         keywords: extractKeywords(text)
       }
     ],
-    matches: [],
-    steps
-  };
+    []
+  );
 }
 
 function typeLabel(type: ItemType): string {

@@ -131,13 +131,21 @@ export function SettingsPane({ onToast, onImported }: Props) {
         </button>
         <button
           className="ghost"
-          onClick={async () => onToast((await window.api.transfer.import("merge")).message)}
+          onClick={async () => {
+            const result = await window.api.transfer.import("merge");
+            onToast(result.message);
+            if (result.ok) onImported?.();
+          }}
         >
           导入并跳过已有
         </button>
         <button
           className="ghost"
-          onClick={async () => onToast((await window.api.transfer.import("overwrite")).message)}
+          onClick={async () => {
+            const result = await window.api.transfer.import("overwrite");
+            onToast(result.message);
+            if (result.ok) onImported?.();
+          }}
         >
           导入并覆盖同 id
         </button>

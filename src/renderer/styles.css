@@ -126,10 +126,29 @@ button {
   color: var(--ink);
 }
 
+.tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tab-count {
+  flex-shrink: 0;
+  margin-left: 8px;
   font-family: var(--mono);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   opacity: 0.7;
+}
+
+.tab-count.is-due {
+  color: #ff5c5c;
+  opacity: 1;
+}
+
+.tab.is-on .tab-count.is-due {
+  color: var(--danger);
 }
 
 .drawer-foot {
@@ -385,6 +404,64 @@ button {
 .field textarea {
   min-height: 88px;
   resize: vertical;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.remind-banner {
+  grid-column: 1 / -1;
+  text-align: left;
+  border: 1px solid var(--cabinet-line);
+  background: var(--cabinet);
+  color: var(--tab-on);
+  padding: 10px 12px;
+}
+
+.remind-pane {
+  background: var(--card);
+  overflow: auto;
+  padding: 22px 22px 32px;
+}
+
+.remind-pane h2 {
+  font-family: var(--display);
+  font-size: 26px;
+  margin: 8px 0 12px;
+}
+
+.remind-pane p,
+.remind-pane .empty {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.remind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.remind-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--rule);
+  padding: 12px;
+}
+
+.remind-card em {
+  font-style: normal;
+  color: var(--stamp-app);
+  font-size: 13px;
 }
 
 .actions {

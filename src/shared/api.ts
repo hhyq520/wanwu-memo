@@ -10,7 +10,8 @@ import type {
   ImportResult,
   ItemDraft,
   LaunchAction,
-  LaunchResult
+  LaunchResult,
+  ReminderFeed
 } from "./types";
 
 export interface DesktopApi {
@@ -21,6 +22,11 @@ export interface DesktopApi {
     upsert: (draft: ItemDraft) => Promise<CatalogItem>;
     delete: (id: string) => Promise<boolean>;
     categories: () => Promise<string[]>;
+  };
+  reminders: {
+    list: () => Promise<ReminderFeed>;
+    dismiss: (id: string) => Promise<ReminderFeed>;
+    onDue: (cb: (feed: ReminderFeed) => void) => () => void;
   };
   chat: {
     send: (conversationId: string | undefined, text: string) => Promise<ChatTurnResult>;

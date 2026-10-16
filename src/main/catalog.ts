@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import type { CatalogItem, ItemDraft, ItemType, OpenWith, SourceKind } from "@shared/types";
+import { asRemindKind, computeRemindAt } from "@shared/remind";
+import type { CatalogItem, ItemDraft, ItemType, OpenWith, RemindKind, SourceKind } from "@shared/types";
 import { getDb } from "./db";
 import { sanitizeLaunchCommand } from "./inspect";
 import { expandUserPath, portablePath } from "./paths";
@@ -24,6 +25,10 @@ interface ItemRow {
   source_raw: string;
   created_at: number;
   updated_at: number;
+  remind_kind?: string;
+  remind_date?: string;
+  remind_at?: number;
+  remind_dismissed_at?: number;
 }
 
 function parseJsonArray(raw: string): string[] {
@@ -62,6 +67,10 @@ function rowToItem(row: ItemRow): CatalogItem {
     sourceRaw: row.source_raw,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    remindKind: asRemindKind(row.remind_kind),
+    remindDate: row.remind_date || "",
+    remindAt: row.remind_at || 0,
+    remindDismissedAt: row.remind_dismissed_at || 0,
     pathMissing: Boolean(expanded) && !fs.existsSync(expanded)
   };
 }
@@ -111,6 +120,56 @@ export function deleteItem(id: string): boolean {
   return result.changes > 0;
 }
 
+export function listDueReminders(now = Date.now()): CatalogItem[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM items
+       WHERE remind_kind != 'none' AND remind_at > 0 AND remind_at <= ? AND remind_dismissed_at = 0
+       ORDER BY remind_at ASC`
+    )
+    .all(now) as ItemRow[];
+  return rows.map(rowToItem);
+}
+
+export function nextReminderAt(now = Date.now()): number | null {
+  const row = getDb()
+    .prepare(
+      `SELECT MIN(remind_at) AS at FROM items
+       WHERE remind_kind != 'none' AND remind_dismissed_at = 0 AND remind_at > ?`
+    )
+    .get(now) as { at: number | null } | undefined;
+  return row?.at ?? null;
+}
+
+export function dismissReminder(id: string, now = Date.now()): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE items SET remind_dismissed_at = ?
+       WHERE id = ? AND remind_dismissed_at = 0 AND remind_kind != 'none'`
+    )
+    .run(now, id);
+  return result.changes > 0;
+}
+
+function reminderFields(
+  draft: ItemDraft,
+  existing: CatalogItem | null,
+  createdAt: number
+): Pick<CatalogItem, "remindKind" | "remindDate" | "remindAt" | "remindDismissedAt"> {
+  const kind: RemindKind =
+    draft.remindKind !== undefined ? asRemindKind(draft.remindKind) : (existing?.remindKind ?? "none");
+  const date = (draft.remindDate !== undefined ? draft.remindDate : (existing?.remindDate ?? "")).trim();
+  const storedDate = kind === "date" || kind === "at" ? date : "";
+  const changed =
+    !existing || existing.remindKind !== kind || (existing.remindDate || "") !== storedDate;
+  return {
+    remindKind: kind,
+    remindDate: storedDate,
+    remindAt: computeRemindAt(kind, storedDate, createdAt),
+    remindDismissedAt: changed ? 0 : (existing?.remindDismissedAt ?? 0)
+  };
+}
+
 export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
   const db = getDb();
   const now = Date.now();
@@ -135,23 +194,28 @@ export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
     sourceKind: draft.sourceKind ?? existing?.sourceKind ?? "text",
     sourceRaw: draft.sourceRaw ?? existing?.sourceRaw ?? "",
     createdAt: existing?.createdAt ?? now,
-    updatedAt: now
+    updatedAt: now,
+    ...reminderFields(draft, existing, existing?.createdAt ?? now)
   };
   ensureCategory(item.category);
   db.prepare(
     `INSERT INTO items (
       id, title, type, category, tags, app_name, path, url, launch_command, open_with,
-      body, summary, howto, keywords, source_kind, source_raw, created_at, updated_at
+      body, summary, howto, keywords, source_kind, source_raw, created_at, updated_at,
+      remind_kind, remind_date, remind_at, remind_dismissed_at
     ) VALUES (
       @id, @title, @type, @category, @tags, @appName, @path, @url, @launchCommand, @openWith,
-      @body, @summary, @howto, @keywords, @sourceKind, @sourceRaw, @createdAt, @updatedAt
+      @body, @summary, @howto, @keywords, @sourceKind, @sourceRaw, @createdAt, @updatedAt,
+      @remindKind, @remindDate, @remindAt, @remindDismissedAt
     )
     ON CONFLICT(id) DO UPDATE SET
       title=excluded.title, type=excluded.type, category=excluded.category, tags=excluded.tags,
       app_name=excluded.app_name, path=excluded.path, url=excluded.url,
       launch_command=excluded.launch_command, open_with=excluded.open_with,
       body=excluded.body, summary=excluded.summary, howto=excluded.howto, keywords=excluded.keywords,
-      source_kind=excluded.source_kind, source_raw=excluded.source_raw, updated_at=excluded.updated_at`
+      source_kind=excluded.source_kind, source_raw=excluded.source_raw, updated_at=excluded.updated_at,
+      remind_kind=excluded.remind_kind, remind_date=excluded.remind_date,
+      remind_at=excluded.remind_at, remind_dismissed_at=excluded.remind_dismissed_at`
   ).run({
     ...item,
     tags: JSON.stringify(item.tags),

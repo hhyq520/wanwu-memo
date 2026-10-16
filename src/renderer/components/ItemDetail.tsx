@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import type { CatalogItem, ItemDraft, ItemType, LaunchAction } from "@shared/types";
+import { keepRemindDate } from "@shared/remind";
+import type { CatalogItem, ItemDraft, ItemType, LaunchAction, RemindKind } from "@shared/types";
 import { accession, TYPE_LABEL } from "../labels";
+import { RemindFields } from "./RemindFields";
 
 const TYPES: ItemType[] = ["app", "project", "url", "note"];
 
@@ -75,6 +77,18 @@ export function ItemDetail({ item, categories, onClose, onSaved, onDeleted, onTo
           ))}
         </datalist>
       </label>
+      <RemindFields
+        kind={draft.remindKind || "none"}
+        date={draft.remindDate || ""}
+        createdAt={item.createdAt}
+        onChange={(kind: RemindKind, date: string) => {
+          setDraft((prev) => ({
+            ...prev,
+            remindKind: kind,
+            remindDate: keepRemindDate(kind, kind === "date" ? date : prev.remindDate || "")
+          }));
+        }}
+      />
       {draft.type === "app" && (
         <label className="field">
           <span>软件名</span>

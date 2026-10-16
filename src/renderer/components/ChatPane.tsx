@@ -5,11 +5,12 @@ import { accession, cardLocationLine, TYPE_LABEL } from "../labels";
 
 interface Props {
   onSaved: (item: CatalogItem) => void;
+  onRefresh?: () => void;
   onOpenItem: (item: CatalogItem) => void;
   onToast: (text: string) => void;
 }
 
-export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
+export function ChatPane({ onSaved, onRefresh, onOpenItem, onToast }: Props) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -46,6 +47,7 @@ export function ChatPane({ onSaved, onOpenItem, onToast }: Props) {
         prev ? { ...prev, id: result.conversationId } : { id: result.conversationId, title: content, createdAt: Date.now(), updatedAt: Date.now() }
       );
       setMessages((prev) => [...prev, result.userMessage, result.assistantMessage]);
+      onRefresh?.();
     } catch (error) {
       onToast(error instanceof Error ? error.message : "发送失败");
     } finally {
