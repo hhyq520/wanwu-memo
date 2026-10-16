@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, clipboard } from "electron";
 import path from "node:path";
 import { setReminderBadge } from "./badge";
+import { removeItemCalendar, syncItemCalendar, syncUnlinkedCalendars } from "./calendar";
 import {
   deleteItem,
   dismissReminder,
@@ -107,6 +108,7 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
   publishReminders();
+  void syncUnlinkedCalendars();
   app.on("browser-window-focus", () => publishReminders());
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
@@ -127,20 +129,24 @@ function registerIpc(): void {
   ipcMain.handle("catalog:list", (_e, category?: string) => listItems(category));
   ipcMain.handle("catalog:get", (_e, id: string) => getItem(id));
   ipcMain.handle("catalog:search", (_e, query: string) => searchItems(query));
-  ipcMain.handle("catalog:upsert", (_e, draft: ItemDraft) => {
+  ipcMain.handle("catalog:upsert", async (_e, draft: ItemDraft) => {
     const item = upsertItem(draft);
+    await syncItemCalendar(getItem(item.id) ?? item);
     publishReminders();
-    return item;
+    return getItem(item.id) ?? item;
   });
-  ipcMain.handle("catalog:delete", (_e, id: string) => {
+  ipcMain.handle("catalog:delete", async (_e, id: string) => {
     const removed = deleteItem(id);
+    await removeItemCalendar(id);
     publishReminders();
     return removed;
   });
   ipcMain.handle("catalog:categories", () => listCategories());
   ipcMain.handle("reminders:list", () => publishReminders());
-  ipcMain.handle("reminders:dismiss", (_e, id: string) => {
+  ipcMain.handle("reminders:dismiss", async (_e, id: string) => {
     dismissReminder(id);
+    const item = getItem(id);
+    if (item) await syncItemCalendar(item);
     return publishReminders();
   });
 

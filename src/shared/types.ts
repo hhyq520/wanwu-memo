@@ -47,6 +47,7 @@ export interface CatalogItem {
   remindDate: string;
   remindAt: number;
   remindDismissedAt: number;
+  calendarEventId: string;
   pathMissing?: boolean;
 }
 

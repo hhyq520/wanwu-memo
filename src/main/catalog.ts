@@ -29,6 +29,7 @@ interface ItemRow {
   remind_date?: string;
   remind_at?: number;
   remind_dismissed_at?: number;
+  calendar_event_id?: string;
 }
 
 function parseJsonArray(raw: string): string[] {
@@ -71,6 +72,7 @@ function rowToItem(row: ItemRow): CatalogItem {
     remindDate: row.remind_date || "",
     remindAt: row.remind_at || 0,
     remindDismissedAt: row.remind_dismissed_at || 0,
+    calendarEventId: row.calendar_event_id || "",
     pathMissing: Boolean(expanded) && !fs.existsSync(expanded)
   };
 }
@@ -141,6 +143,20 @@ export function nextReminderAt(now = Date.now()): number | null {
   return row?.at ?? null;
 }
 
+export function setCalendarEventId(id: string, eventId: string): void {
+  getDb().prepare("UPDATE items SET calendar_event_id = ? WHERE id = ?").run(eventId, id);
+}
+
+export function listUnlinkedReminders(): CatalogItem[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM items
+       WHERE remind_kind != 'none' AND remind_at > 0 AND remind_dismissed_at = 0 AND calendar_event_id = ''`
+    )
+    .all() as ItemRow[];
+  return rows.map(rowToItem);
+}
+
 export function dismissReminder(id: string, now = Date.now()): boolean {
   const result = getDb()
     .prepare(
@@ -195,7 +211,8 @@ export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
     sourceRaw: draft.sourceRaw ?? existing?.sourceRaw ?? "",
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    ...reminderFields(draft, existing, existing?.createdAt ?? now)
+    ...reminderFields(draft, existing, existing?.createdAt ?? now),
+    calendarEventId: existing?.calendarEventId ?? ""
   };
   ensureCategory(item.category);
   db.prepare(

@@ -1,3 +1,4 @@
+import { syncItemCalendar } from "./calendar";
 import { stampReminder } from "@shared/remind";
 import type { ChatStep, ItemDraft, ItemType, SourceKind } from "@shared/types";
 import { rankItemsByQuery, searchItems, upsertItem } from "./catalog";
@@ -343,6 +344,7 @@ async function runTool(
     case "upsert_item": {
       const stamped = stampReminder(runtime.userText || "", asDraft(args));
       const saved = upsertItem(stamped.draft);
+      await syncItemCalendar(saved);
       return JSON.stringify({ ok: true, item: saved, note: stamped.note || undefined });
     }
     default:
