@@ -1,3 +1,4 @@
+import { stampPrivacy } from "@shared/privacy";
 import { stampReminder } from "@shared/remind";
 import type { ChatStep, ItemDraft, ItemType } from "@shared/types";
 import { cleanAppName, inspectPath, resolveApp } from "../inspect";
@@ -31,7 +32,11 @@ export async function runLocalFallback(
     onStep?.(step);
   };
   const finish = (reply: string, drafts: ItemDraft[], matches: ToolRuntime["matches"]) => {
-    const stamped = drafts.map((draft) => stampReminder(text, draft));
+    const stamped = drafts.map((draft) => {
+      const reminded = stampReminder(text, draft);
+      const locked = stampPrivacy(text, reminded.draft);
+      return { draft: locked.draft, note: reminded.note || locked.note };
+    });
     const note = stamped.find((item) => item.note)?.note;
     return {
       text: note && !reply.includes(note) ? `${reply}\n\n${note}` : reply,

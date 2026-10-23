@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type { ChatMessage, ChatStep, ItemDraft } from "@shared/types";
 import { PROVIDER_DEFAULTS, type ProviderId } from "@shared/types";
 import { executeTool, TOOL_DEFINITIONS, type ToolRuntime } from "../tools";
+import { privacySource } from "@shared/privacy";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 type CompatProvider = Exclude<ProviderId, "cursor">;
@@ -34,7 +35,11 @@ export async function runOpenAICompat(options: {
     matches: [],
     steps: [],
     onStep: options.onStep,
-    userText: options.userText
+    userText: options.userText,
+    lockText: privacySource(
+      options.history.filter((msg) => msg.role === "user").map((msg) => msg.content),
+      options.userText
+    )
   };
   const tools = TOOL_DEFINITIONS as OpenAI.Chat.ChatCompletionTool[];
   runtime.onStep?.({ title: "正在调用模型" });

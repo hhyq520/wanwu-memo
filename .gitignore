@@ -1,9 +1,11 @@
 node_modules
 out
 dist
+build
 .DS_Store
 *.log
 release
 .idea
 .vscode
 *.local
+*.tsbuildinfo

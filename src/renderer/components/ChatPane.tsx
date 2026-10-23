@@ -6,11 +6,12 @@ import { accession, cardLocationLine, TYPE_LABEL } from "../labels";
 interface Props {
   onSaved: (item: CatalogItem) => void;
   onRefresh?: () => void;
+  onVault?: (visible: boolean) => void;
   onOpenItem: (item: CatalogItem) => void;
   onToast: (text: string) => void;
 }
 
-export function ChatPane({ onSaved, onRefresh, onOpenItem, onToast }: Props) {
+export function ChatPane({ onSaved, onRefresh, onVault, onOpenItem, onToast }: Props) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -47,6 +48,7 @@ export function ChatPane({ onSaved, onRefresh, onOpenItem, onToast }: Props) {
         prev ? { ...prev, id: result.conversationId } : { id: result.conversationId, title: content, createdAt: Date.now(), updatedAt: Date.now() }
       );
       setMessages((prev) => [...prev, result.userMessage, result.assistantMessage]);
+      if (result.vault?.changed) onVault?.(result.vault.visible);
       onRefresh?.();
     } catch (error) {
       onToast(error instanceof Error ? error.message : "发送失败");
@@ -74,7 +76,7 @@ export function ChatPane({ onSaved, onRefresh, onOpenItem, onToast }: Props) {
       <div className="messages">
         {messages.length === 0 && (
           <div className="empty">
-            丢一条路径、git、网址、软件名，或说「记住：……」。找的时候直接说用途，例如「小红薯视频下载软件」。
+            丢一条路径、git、网址、软件名，或说「记住：……」。要锁起来就说「加锁」。要看锁住的卡片，说「显示锁起来的卡片」或「解锁所有」。
           </div>
         )}
         {messages.map((msg) => (

@@ -238,6 +238,11 @@ button {
   transform: rotate(-6deg);
 }
 
+.stamp.is-private {
+  color: var(--danger);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
 .stamp.app { color: var(--stamp-app); }
 .stamp.project { color: var(--stamp-project); }
 .stamp.url { color: var(--stamp-url); }
@@ -392,6 +397,12 @@ button {
   color: var(--muted);
 }
 
+.field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  align-self: flex-start;
+}
 .field input,
 .field textarea,
 .field select {

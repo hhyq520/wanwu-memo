@@ -5,6 +5,7 @@ import type { CatalogItem, ItemDraft, ItemType, OpenWith, RemindKind, SourceKind
 import { getDb } from "./db";
 import { sanitizeLaunchCommand } from "./inspect";
 import { expandUserPath, portablePath } from "./paths";
+import { isVaultOpen } from "./vault";
 
 interface ItemRow {
   id: string;
@@ -30,6 +31,7 @@ interface ItemRow {
   remind_at?: number;
   remind_dismissed_at?: number;
   calendar_event_id?: string;
+  private?: number;
 }
 
 function parseJsonArray(raw: string): string[] {
@@ -73,6 +75,7 @@ function rowToItem(row: ItemRow): CatalogItem {
     remindAt: row.remind_at || 0,
     remindDismissedAt: row.remind_dismissed_at || 0,
     calendarEventId: row.calendar_event_id || "",
+    private: Boolean(row.private),
     pathMissing: Boolean(expanded) && !fs.existsSync(expanded)
   };
 }
@@ -92,14 +95,22 @@ export function ensureCategory(name: string): void {
     .run(trimmed);
 }
 
+function hiddenSql(column = "private"): string {
+  return isVaultOpen() ? "" : ` AND ${column} = 0`;
+}
+
 export function listItems(category?: string): CatalogItem[] {
   const db = getDb();
   const rows =
     category && category !== "全部"
       ? (db
-          .prepare("SELECT * FROM items WHERE category = ? ORDER BY updated_at DESC")
+          .prepare(
+            `SELECT * FROM items WHERE category = ?${hiddenSql()} ORDER BY updated_at DESC`
+          )
           .all(category) as ItemRow[])
-      : (db.prepare("SELECT * FROM items ORDER BY updated_at DESC").all() as ItemRow[]);
+      : (db
+          .prepare(`SELECT * FROM items WHERE 1 = 1${hiddenSql()} ORDER BY updated_at DESC`)
+          .all() as ItemRow[]);
   return rows.map(rowToItem);
 }
 
@@ -126,7 +137,7 @@ export function listDueReminders(now = Date.now()): CatalogItem[] {
   const rows = getDb()
     .prepare(
       `SELECT * FROM items
-       WHERE remind_kind != 'none' AND remind_at > 0 AND remind_at <= ? AND remind_dismissed_at = 0
+       WHERE remind_kind != 'none' AND remind_at > 0 AND remind_at <= ? AND remind_dismissed_at = 0${hiddenSql()}
        ORDER BY remind_at ASC`
     )
     .all(now) as ItemRow[];
@@ -137,7 +148,7 @@ export function nextReminderAt(now = Date.now()): number | null {
   const row = getDb()
     .prepare(
       `SELECT MIN(remind_at) AS at FROM items
-       WHERE remind_kind != 'none' AND remind_dismissed_at = 0 AND remind_at > ?`
+       WHERE remind_kind != 'none' AND remind_dismissed_at = 0 AND remind_at > ?${hiddenSql()}`
     )
     .get(now) as { at: number | null } | undefined;
   return row?.at ?? null;
@@ -151,7 +162,7 @@ export function listUnlinkedReminders(): CatalogItem[] {
   const rows = getDb()
     .prepare(
       `SELECT * FROM items
-       WHERE remind_kind != 'none' AND remind_at > 0 AND remind_dismissed_at = 0 AND calendar_event_id = ''`
+       WHERE remind_kind != 'none' AND remind_at > 0 AND remind_dismissed_at = 0 AND calendar_event_id = '' AND private = 0`
     )
     .all() as ItemRow[];
   return rows.map(rowToItem);
@@ -212,18 +223,19 @@ export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     ...reminderFields(draft, existing, existing?.createdAt ?? now),
-    calendarEventId: existing?.calendarEventId ?? ""
+    calendarEventId: existing?.calendarEventId ?? "",
+    private: draft.private !== undefined ? Boolean(draft.private) : Boolean(existing?.private)
   };
   ensureCategory(item.category);
   db.prepare(
     `INSERT INTO items (
       id, title, type, category, tags, app_name, path, url, launch_command, open_with,
       body, summary, howto, keywords, source_kind, source_raw, created_at, updated_at,
-      remind_kind, remind_date, remind_at, remind_dismissed_at
+      remind_kind, remind_date, remind_at, remind_dismissed_at, private
     ) VALUES (
       @id, @title, @type, @category, @tags, @appName, @path, @url, @launchCommand, @openWith,
       @body, @summary, @howto, @keywords, @sourceKind, @sourceRaw, @createdAt, @updatedAt,
-      @remindKind, @remindDate, @remindAt, @remindDismissedAt
+      @remindKind, @remindDate, @remindAt, @remindDismissedAt, @isPrivate
     )
     ON CONFLICT(id) DO UPDATE SET
       title=excluded.title, type=excluded.type, category=excluded.category, tags=excluded.tags,
@@ -232,11 +244,13 @@ export function upsertItem(draft: ItemDraft & { id?: string }): CatalogItem {
       body=excluded.body, summary=excluded.summary, howto=excluded.howto, keywords=excluded.keywords,
       source_kind=excluded.source_kind, source_raw=excluded.source_raw, updated_at=excluded.updated_at,
       remind_kind=excluded.remind_kind, remind_date=excluded.remind_date,
-      remind_at=excluded.remind_at, remind_dismissed_at=excluded.remind_dismissed_at`
+      remind_at=excluded.remind_at, remind_dismissed_at=excluded.remind_dismissed_at,
+      private=excluded.private`
   ).run({
     ...item,
     tags: JSON.stringify(item.tags),
-    keywords: JSON.stringify(item.keywords)
+    keywords: JSON.stringify(item.keywords),
+    isPrivate: item.private ? 1 : 0
   });
   return getItem(id)!;
 }
@@ -386,7 +400,7 @@ function searchItemsRaw(query: string): ScoredHit[] {
         .prepare(
           `SELECT items.*, bm25(items_fts) AS fts_rank FROM items
            JOIN items_fts ON items.rowid = items_fts.rowid
-           WHERE items_fts MATCH ?`
+           WHERE items_fts MATCH ?${hiddenSql("items.private")}`
         )
         .all(match) as RankedRow[];
       for (const row of rows) {
@@ -399,7 +413,7 @@ function searchItemsRaw(query: string): ScoredHit[] {
           .prepare(
             `SELECT items.* FROM items
              JOIN items_fts ON items.rowid = items_fts.rowid
-             WHERE items_fts MATCH ?`
+             WHERE items_fts MATCH ?${hiddenSql("items.private")}`
           )
           .all(match) as ItemRow[];
         for (const row of rows) {
@@ -415,9 +429,10 @@ function searchItemsRaw(query: string): ScoredHit[] {
   const like = `%${q}%`;
   const likeRows = db
     .prepare(
-      `SELECT * FROM items WHERE
+      `SELECT * FROM items WHERE (
         title LIKE ? OR summary LIKE ? OR howto LIKE ? OR body LIKE ? OR tags LIKE ?
-        OR keywords LIKE ? OR app_name LIKE ? OR path LIKE ? OR url LIKE ?`
+        OR keywords LIKE ? OR app_name LIKE ? OR path LIKE ? OR url LIKE ?
+      )${hiddenSql()}`
     )
     .all(like, like, like, like, like, like, like, like, like) as ItemRow[];
   for (const row of likeRows) {

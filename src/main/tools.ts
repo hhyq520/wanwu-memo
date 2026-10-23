@@ -1,4 +1,5 @@
 import { syncItemCalendar } from "./calendar";
+import { stampPrivacy } from "@shared/privacy";
 import { stampReminder } from "@shared/remind";
 import type { ChatStep, ItemDraft, ItemType, SourceKind } from "@shared/types";
 import { rankItemsByQuery, searchItems, upsertItem } from "./catalog";
@@ -163,6 +164,7 @@ export interface ToolRuntime {
   steps: ChatStep[];
   onStep?: (step: ChatStep) => void;
   userText?: string;
+  lockText?: string;
 }
 
 function firstText(...values: unknown[]): string {
@@ -342,10 +344,12 @@ async function runTool(
       return JSON.stringify({ ok: true, draft, note: "已生成确认卡，等用户确定后再 upsert" });
     }
     case "upsert_item": {
-      const stamped = stampReminder(runtime.userText || "", asDraft(args));
-      const saved = upsertItem(stamped.draft);
+      const source = runtime.lockText || runtime.userText || "";
+      const reminded = stampReminder(runtime.userText || "", asDraft(args));
+      const locked = stampPrivacy(source, reminded.draft);
+      const saved = upsertItem(locked.draft);
       await syncItemCalendar(saved);
-      return JSON.stringify({ ok: true, item: saved, note: stamped.note || undefined });
+      return JSON.stringify({ ok: true, item: saved, note: reminded.note || locked.note || undefined });
     }
     default:
       return JSON.stringify({ error: `未知工具 ${name}` });

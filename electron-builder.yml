@@ -8,6 +8,9 @@ files:
 asar: true
 asarUnpack:
   - node_modules/better-sqlite3/**/*
+extraResources:
+  - from: build/wanwu-auth
+    to: wanwu-auth
 mac:
   category: public.app-category.productivity
   icon: build/icon.png

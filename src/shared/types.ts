@@ -48,6 +48,7 @@ export interface CatalogItem {
   remindAt: number;
   remindDismissedAt: number;
   calendarEventId: string;
+  private: boolean;
   pathMissing?: boolean;
 }
 
@@ -83,6 +84,10 @@ export interface ChatTurnResult {
   conversationId: string;
   userMessage: ChatMessage;
   assistantMessage: ChatMessage;
+  vault?: {
+    visible: boolean;
+    changed: boolean;
+  };
 }
 
 export interface AppSettings {

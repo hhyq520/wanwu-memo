@@ -22,7 +22,8 @@ import { getSettings, setSettings } from "./settings";
 import { importChromeBookmarks } from "./chrome-bookmarks";
 import { enrichWeakUrlItems } from "./enrich";
 import { exportCatalog, importCatalog } from "./transfer";
-import type { AppSettingsInput, ItemDraft, LaunchAction } from "@shared/types";
+import { isVaultOpen, lockVault } from "./vault";
+import type { AppSettingsInput, CatalogItem, ItemDraft, LaunchAction } from "@shared/types";
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -83,6 +84,9 @@ function createWindow(): BrowserWindow {
     win.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 
+  win.on("close", () => {
+    lockVault();
+  });
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
   });
@@ -121,13 +125,20 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  lockVault();
   if (reminderTimer) clearTimeout(reminderTimer);
   closeDb();
 });
 
+function visibleItem(id: string): CatalogItem | null {
+  const item = getItem(id);
+  if (!item || (item.private && !isVaultOpen())) return null;
+  return item;
+}
+
 function registerIpc(): void {
   ipcMain.handle("catalog:list", (_e, category?: string) => listItems(category));
-  ipcMain.handle("catalog:get", (_e, id: string) => getItem(id));
+  ipcMain.handle("catalog:get", (_e, id: string) => visibleItem(id));
   ipcMain.handle("catalog:search", (_e, query: string) => searchItems(query));
   ipcMain.handle("catalog:upsert", async (_e, draft: ItemDraft) => {
     const item = upsertItem(draft);
@@ -150,11 +161,13 @@ function registerIpc(): void {
     return publishReminders();
   });
 
-  ipcMain.handle("chat:send", (e, conversationId: string | undefined, text: string) =>
-    handleChat(conversationId, text, (step) => {
+  ipcMain.handle("chat:send", async (e, conversationId: string | undefined, text: string) => {
+    const result = await handleChat(conversationId, text, (step) => {
       e.sender.send("chat:step", step);
-    })
-  );
+    });
+    if (result.vault?.changed) publishReminders();
+    return result;
+  });
   ipcMain.handle("chat:list", () => listConversations());
   ipcMain.handle("chat:messages", (_e, id?: string) => {
     const convo = getOrCreateConversation(id);
@@ -165,7 +178,10 @@ function registerIpc(): void {
     return { conversation: convo, messages: [] };
   });
 
-  ipcMain.handle("launch:run", (_e, id: string, action: LaunchAction) => launchItem(id, action));
+  ipcMain.handle("launch:run", (_e, id: string, action: LaunchAction) => {
+    if (!visibleItem(id)) return { ok: false, message: "条目不存在" };
+    return launchItem(id, action);
+  });
   ipcMain.handle("clipboard:write", (_e, text: string) => {
     clipboard.writeText(text);
     return { ok: true, message: "已复制" };

@@ -77,6 +77,17 @@ export function ItemDetail({ item, categories, onClose, onSaved, onDeleted, onTo
           ))}
         </datalist>
       </label>
+      <label className="field">
+        <span>加锁</span>
+        <input
+          type="checkbox"
+          checked={Boolean(draft.private)}
+          onChange={(e) => set("private", e.target.checked)}
+        />
+        <p className="field-hint">
+          {draft.private ? "已加锁。藏起来之后，列表和搜索都不会出现。" : "勾上后平时不显示，搜索也找不到。"}
+        </p>
+      </label>
       <RemindFields
         kind={draft.remindKind || "none"}
         date={draft.remindDate || ""}

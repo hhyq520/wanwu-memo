@@ -96,7 +96,8 @@ function eventCopy(item: CatalogItem): { title: string; notes: string } {
 
 export async function syncItemCalendar(item: CatalogItem): Promise<void> {
   if (process.platform !== "darwin") return;
-  const active = item.remindKind !== "none" && item.remindAt > 0 && item.remindDismissedAt === 0;
+  const active =
+    !item.private && item.remindKind !== "none" && item.remindAt > 0 && item.remindDismissedAt === 0;
   if (!active && !item.calendarEventId) return;
   try {
     if (!active) {

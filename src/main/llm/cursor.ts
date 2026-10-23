@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatStep, ItemDraft } from "@shared/types";
 import { cursorCustomTools, type ToolRuntime } from "../tools";
 import { sandboxCwd } from "../settings";
+import { privacySource } from "@shared/privacy";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 export async function runCursorAgent(options: {
@@ -16,7 +17,11 @@ export async function runCursorAgent(options: {
     matches: [],
     steps: [],
     onStep: options.onStep,
-    userText: options.userText
+    userText: options.userText,
+    lockText: privacySource(
+      options.history.filter((msg) => msg.role === "user").map((msg) => msg.content),
+      options.userText
+    )
   };
   runtime.onStep?.({ title: "正在调用模型" });
   runtime.steps.push({ title: "正在调用模型" });

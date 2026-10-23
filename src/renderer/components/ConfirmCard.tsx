@@ -55,6 +55,17 @@ export function ConfirmCard({ draft, onSaved, onToast }: Props) {
           onChange={(e) => setLocal({ ...local, category: e.target.value })}
         />
       </label>
+      <label className="field">
+        <span>加锁</span>
+        <input
+          type="checkbox"
+          checked={Boolean(local.private)}
+          onChange={(e) => setLocal({ ...local, private: e.target.checked })}
+        />
+        <p className="field-hint">
+          {local.private ? "已加锁，平时不显示，搜索也找不到。" : "说「加锁」时会勾上。平时不显示。"}
+        </p>
+      </label>
       <RemindFields
         kind={local.remindKind || "none"}
         date={local.remindDate || ""}

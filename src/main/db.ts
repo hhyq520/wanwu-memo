@@ -25,7 +25,8 @@ function ensureReminderColumns(database: Database.Database): void {
     ["remind_date", "remind_date TEXT NOT NULL DEFAULT ''"],
     ["remind_at", "remind_at INTEGER NOT NULL DEFAULT 0"],
     ["remind_dismissed_at", "remind_dismissed_at INTEGER NOT NULL DEFAULT 0"],
-    ["calendar_event_id", "calendar_event_id TEXT NOT NULL DEFAULT ''"]
+    ["calendar_event_id", "calendar_event_id TEXT NOT NULL DEFAULT ''"],
+    ["private", "private INTEGER NOT NULL DEFAULT 0"]
   ];
   for (const [name, ddl] of add) {
     if (!columns.has(name)) database.exec(`ALTER TABLE items ADD COLUMN ${ddl}`);

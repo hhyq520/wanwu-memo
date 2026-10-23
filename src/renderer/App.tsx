@@ -21,6 +21,7 @@ export function App() {
 
   const [allItems, setAllItems] = useState<CatalogItem[]>([]);
   const reloadSeq = useRef(0);
+  const vaultOpen = useRef(false);
 
   async function reload(nextCategory = category, nextQuery = query) {
     const seq = ++reloadSeq.current;
@@ -67,7 +68,7 @@ export function App() {
   }
 
   function onSaved(item: CatalogItem) {
-    setSelected(item);
+    setSelected(item.private && !vaultOpen.current ? null : item);
     void reload();
   }
 
@@ -95,6 +96,10 @@ export function App() {
       <ChatPane
         onSaved={onSaved}
         onRefresh={() => void reload()}
+        onVault={(visible) => {
+          vaultOpen.current = visible;
+          if (!visible) setSelected((current) => (current?.private ? null : current));
+        }}
         onOpenItem={(item) => {
           setSelected(item);
           setView("library");
@@ -218,6 +223,7 @@ export function App() {
                   >
                     <div className="card-head">
                       <span className={`stamp ${item.type}`}>{TYPE_LABEL[item.type]}</span>
+                      {item.private ? <span className="stamp is-private">私密</span> : null}
                       <span className="accession">{accession(item.id)}</span>
                     </div>
                     <h3 className="card-title">{item.title}</h3>
